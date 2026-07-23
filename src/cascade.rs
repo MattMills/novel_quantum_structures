@@ -206,6 +206,30 @@ impl Transducer {
         Transducer::div(profile, k).to_mpo_with(Boundary::SumAll, Boundary::Fixed(0), trunc)
     }
 
+    /// The **looped boundary**: the exiting message is fed back into the
+    /// entry — the machine eats its own tail, `M = Σ_m ⟨m|machine|m⟩`.
+    ///
+    /// Closing the loop changes the arithmetic: the traced adder is
+    /// end-around carry (ones'-complement addition), computing
+    /// `mod N-1` instead of `mod N`; the traced multiplier likewise becomes
+    /// `×k mod N-1`. On the diamond this turns the composite ring `Z_2880`
+    /// into the *prime field* `Z_2879` — dissolving every gcd obstruction —
+    /// at the price of a **seam**: the two representatives of zero
+    /// (`0` and `N-1`) make the traced identity the defective operator
+    /// `I + |0⟩⟨N-1|`, whose iteration self-stabilizes the double-zero
+    /// (see [`crate::stabilize`]).
+    pub fn to_mpo_looped(&self, trunc: TruncSpec) -> Mpo {
+        let mut acc: Option<Mpo> = None;
+        for m in 0..self.msg_dim {
+            let branch = self.to_mpo_with(Boundary::Fixed(m), Boundary::Fixed(m), trunc);
+            acc = Some(match acc {
+                None => branch,
+                Some(a) => a.add(&branch, trunc),
+            });
+        }
+        acc.expect("msg_dim >= 1")
+    }
+
     /// Lift the transducer to an MPO with the standard machine boundaries:
     /// the front enters in state 0 and the exiting state is dropped (for
     /// `mod N` arithmetic, the wrap).
@@ -490,6 +514,109 @@ mod tests {
         let f = neg.hs_fidelity(&m23);
         assert!((f - 1.0).abs() < 1e-9, "(+1)∘complement vs ×23: {}", f);
         assert!(neg.max_bond_dim() <= 2);
+    }
+
+    #[test]
+    fn looped_adder_is_ones_complement_arithmetic() {
+        // Feeding the carry back into the entry (end-around carry) changes
+        // the ring: the traced adder computes mod N-1, with a two-branch
+        // seam where both representatives of zero appear.
+        let profile = vec![2usize, 3, 4]; // N = 24 → traced ring Z_23
+        let n_total = total_dim(&profile) as u128;
+        let c = 5u128;
+        let m = Transducer::adder(&profile, c).to_mpo_looped(SPEC);
+        for x in [0u128, 3, 10, 17, 20, 22] {
+            if (x + c).is_multiple_of(n_total - 1) && x + c != 0 {
+                continue; // seam handled below
+            }
+            let target = (x + c) % (n_total - 1);
+            let out = m.apply_to(&basis(&profile, x)).to_dense();
+            assert!(
+                (out.amps[target as usize].abs() - 1.0).abs() < 1e-9,
+                "x={}: weight {}",
+                x,
+                out.amps[target as usize].abs()
+            );
+        }
+        // The seam: x + c = N-1 lands on the double zero — BOTH
+        // representatives appear, in equal superposition.
+        let x_seam = n_total - 1 - c;
+        let out = m.apply_to(&basis(&profile, x_seam)).to_dense();
+        let a_hi = out.amps[(n_total - 1) as usize].abs();
+        let a_lo = out.amps[0].abs();
+        assert!(
+            (a_hi - 1.0).abs() < 1e-9 && (a_lo - 1.0).abs() < 1e-9,
+            "seam branches: |N-1⟩ {} |0⟩ {}",
+            a_hi,
+            a_lo
+        );
+    }
+
+    #[test]
+    fn traced_identity_is_the_seam_jordan_block() {
+        // The looped +0 machine is exactly I + |0⟩⟨N-1|.
+        let profile = vec![2usize, 3, 4];
+        let m = Transducer::adder(&profile, 0).to_mpo_looped(SPEC);
+        let seam_digits: Vec<usize> = profile.iter().map(|&d| d - 1).collect();
+        let expect = Mpo::identity(&profile, SPEC).add(
+            &Mpo::basis_transfer(&profile, &[0, 0, 0], &seam_digits, SPEC),
+            SPEC,
+        );
+        let f = m.hs_fidelity(&expect);
+        assert!((f - 1.0).abs() < 1e-10, "I + |0⟩⟨N-1|: {}", f);
+    }
+
+    #[test]
+    fn looped_boundary_heals_the_gcd_obstruction() {
+        // ×6 on Z_2880 is 6-to-1 (defect 5/6). Close the loop: the traced
+        // multiplier acts on Z_2879 — a prime field — where gcd(6, 2879)=1
+        // and the machine is exactly unitary again.
+        let profile = zigzag::diamond(2, 5); // N = 2880, N-1 = 2879 prime
+        let n_total = total_dim(&profile) as u128;
+        let open = Transducer::mult(&profile, 6).to_mpo(SPEC);
+        let looped = Transducer::mult(&profile, 6).to_mpo_looped(SPEC);
+        let d_open = unitarity_defect(&open, SPEC);
+        let d_loop = unitarity_defect(&looped, SPEC);
+        assert!(d_open > 0.8, "open defect {}", d_open);
+        assert!(d_loop < 1e-8, "looped defect {}", d_loop);
+        // And it really is ×6 mod 2879 (0 and N-1 are its fixed double-zero).
+        for x in [1u128, 500, 2879] {
+            let target = if x == n_total - 1 {
+                n_total - 1
+            } else {
+                6 * x % (n_total - 1)
+            };
+            let f = looped
+                .apply_to(&basis(&profile, x))
+                .fidelity(&basis(&profile, target));
+            assert!((f - 1.0).abs() < 1e-8, "x={}", x);
+        }
+    }
+
+    #[test]
+    fn mps_add_matches_dense_addition() {
+        use crate::dense::DenseState;
+        use crate::mat::Rng;
+        let dims = vec![2usize, 3, 4];
+        let mut rng = Rng::new(77);
+        let mut a = DenseState::zero_state(&dims);
+        let mut b = DenseState::zero_state(&dims);
+        for v in &mut a.amps {
+            *v = rng.c_gaussian();
+        }
+        for v in &mut b.amps {
+            *v = rng.c_gaussian();
+        }
+        let ma = Mps::from_dense(&a, SPEC);
+        let mb = Mps::from_dense(&b, SPEC);
+        let sum = ma.add(&mb, SPEC).to_dense();
+        let diff: f64 = sum
+            .amps
+            .iter()
+            .zip(a.amps.iter().zip(b.amps.iter()))
+            .map(|(s, (x, y))| (*s - (*x + *y)).abs())
+            .fold(0.0, f64::max);
+        assert!(diff < 1e-10, "max diff {}", diff);
     }
 
     #[test]

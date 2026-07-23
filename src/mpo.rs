@@ -237,6 +237,58 @@ impl Mpo {
         }
     }
 
+    /// Operator sum `self + other`, recompressed under `trunc`. Together
+    /// with [`Mpo::scale`] this makes operator *linear combinations*
+    /// first-class: Kraus sums, rank-one corrections, traced boundaries.
+    pub fn add(&self, other: &Mpo, trunc: TruncSpec) -> Mpo {
+        assert_eq!(self.dims, other.dims, "operator chain mismatch");
+        Mpo {
+            dims: self.dims.clone(),
+            carrier: self.carrier.add(&other.carrier, trunc),
+        }
+    }
+
+    /// Scalar multiple `c · self`.
+    pub fn scale(&self, c: C64) -> Mpo {
+        let mut carrier = self.carrier.clone();
+        for v in &mut carrier.tensors[0].data {
+            *v *= c;
+        }
+        Mpo {
+            dims: self.dims.clone(),
+            carrier,
+        }
+    }
+
+    /// The rank-one basis transfer operator `|to⟩⟨from|` — a bond-1 product
+    /// MPO (each site contributes `|to_i⟩⟨from_i|`). With [`Mpo::add`] and
+    /// [`Mpo::scale`] this builds rank-one corrections such as damped
+    /// projectors `I − (1−γ)|x⟩⟨x|`.
+    pub fn basis_transfer(dims: &[usize], to: &[usize], from: &[usize], trunc: TruncSpec) -> Mpo {
+        assert_eq!(dims.len(), to.len());
+        assert_eq!(dims.len(), from.len());
+        let tensors: Vec<SiteTensor> = dims
+            .iter()
+            .zip(to.iter().zip(from.iter()))
+            .map(|(&d, (&t, &f))| {
+                assert!(t < d && f < d);
+                let mut w = SiteTensor::zeros(1, d * d, 1);
+                w.set(0, t * d + f, 0, C64::ONE);
+                w
+            })
+            .collect();
+        Mpo {
+            dims: dims.to_vec(),
+            carrier: Mps {
+                dims: dims.iter().map(|&d| d * d).collect(),
+                tensors,
+                center: 0,
+                trunc,
+                discarded_weight: 0.0,
+            },
+        }
+    }
+
     /// Hermitian adjoint.
     pub fn adjoint(&self) -> Mpo {
         let mut carrier = self.carrier.clone();

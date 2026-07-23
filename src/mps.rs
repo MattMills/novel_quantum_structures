@@ -617,6 +617,64 @@ impl Mps {
         }
     }
 
+    /// The sum `self + other` as a state vector (not normalized), built by
+    /// the standard direct-sum construction — bond dimensions add — and
+    /// recompressed under `trunc`. The workhorse behind operator linear
+    /// combinations (Kraus sums, traced boundaries, rank-one corrections).
+    pub fn add(&self, other: &Mps, trunc: TruncSpec) -> Mps {
+        assert_eq!(
+            self.dims, other.dims,
+            "cannot add states on different chains"
+        );
+        let n = self.num_sites();
+        if n == 1 {
+            let (a, b) = (&self.tensors[0], &other.tensors[0]);
+            let mut t = SiteTensor::zeros(1, a.d, 1);
+            for p in 0..a.d {
+                t.set(0, p, 0, a.at(0, p, 0) + b.at(0, p, 0));
+            }
+            return Mps {
+                dims: self.dims.clone(),
+                tensors: vec![t],
+                center: 0,
+                trunc,
+                discarded_weight: 0.0,
+            };
+        }
+        let mut tensors = Vec::with_capacity(n);
+        for (i, (a, b)) in self.tensors.iter().zip(other.tensors.iter()).enumerate() {
+            let first = i == 0;
+            let last = i == n - 1;
+            let dl = if first { 1 } else { a.dl + b.dl };
+            let dr = if last { 1 } else { a.dr + b.dr };
+            let mut t = SiteTensor::zeros(dl, a.d, dr);
+            for p in 0..a.d {
+                for l in 0..a.dl {
+                    for r in 0..a.dr {
+                        t.set(l, p, r, a.at(l, p, r));
+                    }
+                }
+                let (lo, ro) = (if first { 0 } else { a.dl }, if last { 0 } else { a.dr });
+                for l in 0..b.dl {
+                    for r in 0..b.dr {
+                        let cur = t.at(lo + l, p, ro + r);
+                        t.set(lo + l, p, ro + r, cur + b.at(l, p, r));
+                    }
+                }
+            }
+            tensors.push(t);
+        }
+        let mut out = Mps {
+            dims: self.dims.clone(),
+            tensors,
+            center: 0,
+            trunc,
+            discarded_weight: 0.0,
+        };
+        out.recompress();
+        out
+    }
+
     /// Marginal probabilities of the basis levels of `site` (assumes the
     /// state is normalized). Moves the orthogonality center.
     pub fn site_probabilities(&mut self, site: usize) -> Vec<f64> {

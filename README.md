@@ -43,6 +43,13 @@ of `×k` turns out to be number-theoretically resonant — non-monotone in k
 — and every machine has a *geometrically opposed dual* sweeping the other
 way, often exponentially narrower (findings 15–18 below).
 
+And a fifth: close the boundary loop, and the machine becomes a
+*self-stabilizing dynamical system*. The traced adder computes in a prime
+field that heals gcd obstructions, the double-zero seam is an attractor
+that repairs the number representation with an exact `1/(k²+1)` law, and a
+rank-one damper makes the repair exponential at a rate you choose
+(finding 19 below).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -94,6 +101,7 @@ renormalization:
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
+| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -261,6 +269,24 @@ by digit complement — gives negation `x → −x` at machine width 2 and
 *narrowest* machine that computes it. (`cascade::Transducer::div`,
 `opposed_fronts`)
 
+**19. A closed boundary loop is a self-stabilizing dynamical system.**
+Feeding a cascade's exiting message back into its entry (`to_mpo_looped`)
+turns the machine non-unitary — and non-unitarity is what an attractor
+needs. Four exact results on the diamond: (a) the traced adder is
+end-around carry, computing `mod N-1`, so the composite ring `Z_2880`
+becomes the **prime field `Z_2879`**; (b) in a prime field there is no gcd
+obstruction — `×6`, which is 6-to-1 (unitarity defect 0.833) on `Z_2880`,
+is exactly unitary (defect 10⁻¹⁶) when looped onto `Z_2879`: the boundary
+*heals* the operator; (c) the two representatives of zero make the traced
+identity the defective operator `I + |0⟩⟨N-1|`, whose iteration pumps
+negative-zero to canonical zero with error exactly `1/(k²+1)` — a Jordan
+block, polynomial; (d) composing a rank-one damped seam
+`I − (1−γ)|N-1⟩⟨N-1|` turns the Jordan block into a genuine eigenvalue and
+makes stabilization exponential — 1001 iterations at γ = 1 collapse to
+20 / 11 / 7 at γ = 0.5 / 0.2 / 0.05. Self-stabilization is engineered at
+the boundary, not inside the operator. (`stabilize`,
+`self_stabilizing_boundaries`)
+
 ## Quick start
 
 ```rust
@@ -301,7 +327,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 82 tests, dense-vs-MPS cross-validation
+cargo test                                   # 88 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -310,6 +336,7 @@ cargo run --release --example circuit_of_circuits
 cargo run --release --example operator_width_cursor
 cargo run --release --example stepwise_cascade
 cargo run --release --example opposed_fronts
+cargo run --release --example self_stabilizing_boundaries
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

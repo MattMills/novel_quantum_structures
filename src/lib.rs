@@ -79,6 +79,15 @@
 //!   at the focus, coarsen behind it, total composition invariant. Bond
 //!   dimension along the flow *measures* operation width: it collapses at
 //!   integer shifts and widens at fractional ones.
+//! * [`stabilize`] — **self-stabilizing boundary systems**: close a cascade's
+//!   message loop ([`cascade::Transducer::to_mpo_looped`]) and it becomes a
+//!   non-unitary dynamical system with a designed attractor. The traced
+//!   adder is ones'-complement (mod `N-1`), turning the diamond's composite
+//!   ring into a prime field that *heals* gcd obstructions; the double-zero
+//!   seam is a Jordan block whose iteration self-stabilizes the number
+//!   representation, at a convergence rate a rank-one damper sets. Operator
+//!   linear combinations ([`mpo::Mpo::add`], [`mpo::Mpo::scale`],
+//!   [`mpo::Mpo::basis_transfer`]) make these boundary systems first-class.
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -113,6 +122,7 @@ pub mod mat;
 pub mod mpo;
 pub mod mps;
 pub mod radix;
+pub mod stabilize;
 pub mod zigzag;
 
 pub use c64::C64;
