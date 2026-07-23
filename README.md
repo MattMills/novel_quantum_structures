@@ -40,7 +40,8 @@ finite-state transducers whose message rides the MPO bond. Modular
 multiplication joins the adder as an exact cascade, the family composes
 recursively toward modular exponentiation, and the measured operator width
 of `×k` turns out to be number-theoretically resonant — non-monotone in k
-(findings 15–17 below).
+— and every machine has a *geometrically opposed dual* sweeping the other
+way, often exponentially narrower (findings 15–18 below).
 
 ```text
   5           ●                 ●
@@ -92,7 +93,7 @@ renormalization:
 | `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
-| `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition |
+| `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -240,6 +241,26 @@ unitary exactly when its arithmetic is invertible: `×6` on `Z_2880`
 collision `|0⟩, |480⟩ → |0⟩` — number theory surfacing as an operator
 property. (`cascade`, `stepwise_cascade`)
 
+**18. Every machine has a geometrically opposed dual — and it can be
+exponentially narrower.** Multiplication's carries sweep LSB→MSB;
+division's remainders sweep MSB→LSB with the *same* state-set size `k`.
+Since `÷k = ×k⁻¹`, the inverse multiplier — whose forward carry machine
+needs `k⁻¹ mod N` states — runs as the opposed remainder machine at width
+`k`: on `Z_2880`, `×823` at width 7 instead of 823; on the 25-site wave,
+width 7 instead of ≈ 6·10¹². The enabling ingredient is quantum boundary
+conditions (`Boundary::SumAll` entry, `Boundary::Fixed(0)` exit): the
+remainder front *enters in superposition over the unknown wrap multiple*
+and is *postselected on exact division* — for each input exactly one
+branch survives, something no classical FSM can do. Corollaries, all
+verified at fidelity 1: opposed fronts annihilate (`÷7 ∘ ×7` collapses to
+the all-ones bond profile), two narrow opposed fronts realize enormous
+single-front machines (`×2357 = ÷11 ∘ ×7`, measured true width
+`[2,6,17,13,6,2]`), and the second geometric opposition — ring reflection
+by digit complement — gives negation `x → −x` at machine width 2 and
+`×(N−7)` at width 8 instead of `N−7`. The operator is only as wide as the
+*narrowest* machine that computes it. (`cascade::Transducer::div`,
+`opposed_fronts`)
+
 ## Quick start
 
 ```rust
@@ -280,7 +301,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 78 tests, dense-vs-MPS cross-validation
+cargo test                                   # 82 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -288,6 +309,7 @@ cargo run --release --example long_wave
 cargo run --release --example circuit_of_circuits
 cargo run --release --example operator_width_cursor
 cargo run --release --example stepwise_cascade
+cargo run --release --example opposed_fronts
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

@@ -50,6 +50,23 @@ pub enum Direction {
     RightToLeft,
 }
 
+/// Boundary condition for the message front at either end of the sweep.
+///
+/// A classical machine starts in one state and its final state is read out
+/// or discarded. An MPO boundary can do more: **enter in a superposition of
+/// every state and postselect the exit** — the contraction keeps exactly the
+/// branches whose entry guess turns out consistent. This is what lets the
+/// geometrically opposed machine of [`Transducer::div`] run: the division
+/// remainder machine guesses the wrap multiple `m` at entry (`SumAll`) and
+/// keeps only exact divisions at exit (`Fixed(0)`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Boundary {
+    /// The front enters/exits in a definite state.
+    Fixed(usize),
+    /// Sum over all front states at this end.
+    SumAll,
+}
+
 /// A classical reversible transducer over the chain: per-site rules
 /// `(message_in, digit_in) → (message_out, digit_out)`.
 pub struct Transducer {
@@ -135,13 +152,73 @@ impl Transducer {
         }
     }
 
-    /// Lift the transducer to an MPO: the message legs become virtual
-    /// bonds; the entering message is fixed to 0 and the exiting message is
-    /// dropped (for `mod N` arithmetic, the wrap). The carrier is
-    /// canonicalized under an **exact** policy — cascade branches can carry
-    /// arbitrarily small Frobenius weight (a deep carry has weight `~1/N`)
-    /// while being free to keep in rank.
+    /// Modular **division**: the geometrically opposed machine to
+    /// [`Transducer::mult`], computing the same inverse operation with a
+    /// dual state set running the other way.
+    ///
+    /// `×k⁻¹ mod N` as a forward (LSB→MSB) carry machine needs message
+    /// dimension `k⁻¹ mod N` — typically enormous. But long division's
+    /// remainders flow **MSB→LSB**: with `y = k⁻¹x mod N` there is a unique
+    /// wrap multiple `m ∈ [0, k)` with `k·y = x + m·N`, and dividing
+    /// `x + m·N` by `k` most-significant-first needs only the remainder
+    /// state `r ∈ [0, k)`:
+    ///
+    /// ```text
+    ///   t = r·d + digit_in ;   digit_out = t div k ;   r' = t mod k
+    /// ```
+    ///
+    /// The unknown `m` is exactly the *initial* remainder — so lift with
+    /// [`Boundary::SumAll`] at entry (guess every `m`) and
+    /// [`Boundary::Fixed`]`(0)` at exit (keep only exact divisions): for each
+    /// input one branch survives, and the MPO is the exact permutation
+    /// `|x⟩ → |k⁻¹·x mod N⟩` at message width `k` instead of `k⁻¹ mod N`.
+    pub fn div(profile: &[usize], k: usize) -> Transducer {
+        assert!(k >= 1, "k must be positive");
+        assert!(
+            k <= 512,
+            "direct construction is for modest k; compose cascades for larger divisors"
+        );
+        let rules = profile
+            .iter()
+            .map(|&d| {
+                let mut r = vec![(0usize, 0usize); k * d];
+                for rem_in in 0..k {
+                    for p_in in 0..d {
+                        let t = rem_in * d + p_in;
+                        r[rem_in * d + p_in] = (t % k, t / k);
+                    }
+                }
+                r
+            })
+            .collect();
+        Transducer {
+            profile: profile.to_vec(),
+            msg_dim: k,
+            rules,
+            direction: Direction::LeftToRight,
+        }
+    }
+
+    /// The MPO of [`Transducer::div`] with its dual boundaries
+    /// (`SumAll` entry, `Fixed(0)` exit): the exact operator
+    /// `|x⟩ → |k⁻¹·x mod N⟩`, requiring `gcd(k, N) = 1`.
+    pub fn div_mpo(profile: &[usize], k: usize, trunc: TruncSpec) -> Mpo {
+        Transducer::div(profile, k).to_mpo_with(Boundary::SumAll, Boundary::Fixed(0), trunc)
+    }
+
+    /// Lift the transducer to an MPO with the standard machine boundaries:
+    /// the front enters in state 0 and the exiting state is dropped (for
+    /// `mod N` arithmetic, the wrap).
     pub fn to_mpo(&self, trunc: TruncSpec) -> Mpo {
+        self.to_mpo_with(Boundary::Fixed(0), Boundary::SumAll, trunc)
+    }
+
+    /// Lift the transducer to an MPO with explicit boundary conditions on
+    /// the message front. The message legs become virtual bonds; the
+    /// carrier is canonicalized under an **exact** policy — cascade
+    /// branches can carry arbitrarily small Frobenius weight (a deep carry
+    /// has weight `~1/N`) while being free to keep in rank.
+    pub fn to_mpo_with(&self, entry: Boundary, exit: Boundary, trunc: TruncSpec) -> Mpo {
         let n = self.profile.len();
         let m = self.msg_dim;
         let (entry_site, exit_site) = match self.direction {
@@ -164,22 +241,32 @@ impl Transducer {
                     ),
                 };
                 let mut t = SiteTensor::zeros(dl, d * d, dr);
-                let in_range = match self.direction {
-                    Direction::RightToLeft => dr,
-                    Direction::LeftToRight => dl,
+                let entering: Vec<usize> = if i == entry_site {
+                    match entry {
+                        Boundary::Fixed(s) => vec![s],
+                        Boundary::SumAll => (0..m).collect(),
+                    }
+                } else {
+                    (0..m).collect()
                 };
-                for msg_in in 0..in_range {
+                for &msg_in in &entering {
                     for p_in in 0..d {
                         let (msg_out, p_out) = self.rules[i][msg_in * d + p_in];
+                        if i == exit_site {
+                            if let Boundary::Fixed(s) = exit {
+                                if msg_out != s {
+                                    continue;
+                                }
+                            }
+                        }
+                        let bond_in = if i == entry_site { 0 } else { msg_in };
+                        let bond_out = if i == exit_site { 0 } else { msg_out };
                         let (l, r) = match self.direction {
-                            Direction::RightToLeft => {
-                                (if i == exit_site { 0 } else { msg_out }, msg_in)
-                            }
-                            Direction::LeftToRight => {
-                                (msg_in, if i == exit_site { 0 } else { msg_out })
-                            }
+                            Direction::RightToLeft => (bond_out, bond_in),
+                            Direction::LeftToRight => (bond_in, bond_out),
                         };
-                        t.set(l, p_out * d + p_in, r, C64::ONE);
+                        let cur = t.at(l, p_out * d + p_in, r);
+                        t.set(l, p_out * d + p_in, r, cur + C64::ONE);
                     }
                 }
                 t
@@ -317,6 +404,92 @@ mod tests {
         // A unitary comparison case for contrast.
         let m5 = Transducer::mult(&profile, 5).to_mpo(SPEC);
         assert!(unitarity_defect(&m5, SPEC) < 1e-8);
+    }
+
+    #[test]
+    fn division_is_the_opposed_inverse_machine() {
+        // ×k⁻¹ via the MSB-first remainder machine at width k, checked
+        // three ways on Z_72: against the adjoint of ×k, against a
+        // directly built ×k⁻¹, and on every basis state.
+        let profile = vec![2usize, 3, 4, 3]; // N = 72
+        let n_total = total_dim(&profile) as u128;
+        let k = 5;
+        let k_inv = 29u128; // 5·29 = 145 ≡ 1 (mod 72)
+        let dv = Transducer::div_mpo(&profile, k, SPEC);
+        assert!(
+            dv.max_bond_dim() <= k,
+            "division width {} > k",
+            dv.max_bond_dim()
+        );
+
+        let mk = Transducer::mult(&profile, k).to_mpo(SPEC);
+        let f_adj = dv.hs_fidelity(&mk.adjoint());
+        assert!((f_adj - 1.0).abs() < 1e-9, "÷5 vs (×5)†: {}", f_adj);
+
+        let mk_inv = Transducer::mult(&profile, k_inv as usize).to_mpo(SPEC);
+        let f_dir = dv.hs_fidelity(&mk_inv);
+        assert!((f_dir - 1.0).abs() < 1e-9, "÷5 vs ×29: {}", f_dir);
+
+        for x in 0..n_total {
+            let out = dv.apply_to(&basis(&profile, x)).to_dense();
+            let target = (k_inv * x % n_total) as usize;
+            assert!(
+                (out.amps[target].abs() - 1.0).abs() < 1e-9,
+                "x={}: weight {}",
+                x,
+                out.amps[target].abs()
+            );
+        }
+    }
+
+    #[test]
+    fn opposed_fronts_annihilate() {
+        // ÷k ∘ ×k = identity: the right-moving carry front and the
+        // left-moving remainder front cancel exactly.
+        let profile = zigzag::diamond(2, 4);
+        let mk = Transducer::mult(&profile, 7).to_mpo(SPEC);
+        let dv = Transducer::div_mpo(&profile, 7, SPEC);
+        let id = Mpo::identity(&profile, SPEC);
+        let f1 = dv.compose_after(&mk, SPEC).hs_fidelity(&id);
+        let f2 = mk.compose_after(&dv, SPEC).hs_fidelity(&id);
+        assert!((f1 - 1.0).abs() < 1e-9, "÷7∘×7: {}", f1);
+        assert!((f2 - 1.0).abs() < 1e-9, "×7∘÷7: {}", f2);
+    }
+
+    #[test]
+    fn dual_front_ratio_is_the_modular_quotient() {
+        // ×5 ∘ ÷7 = ×(5·7⁻¹ mod 72) = ×11: two opposed narrow fronts
+        // realize a multiplier whose single-direction machine would need
+        // message width 11 — and for larger rings, far worse.
+        let profile = vec![2usize, 3, 4, 3]; // N = 72; 7⁻¹ = 31; 5·31 ≡ 11
+        let mk5 = Transducer::mult(&profile, 5).to_mpo(SPEC);
+        let dv7 = Transducer::div_mpo(&profile, 7, SPEC);
+        let ratio = mk5.compose_after(&dv7, SPEC);
+        let mk11 = Transducer::mult(&profile, 11).to_mpo(SPEC);
+        let f = ratio.hs_fidelity(&mk11);
+        assert!((f - 1.0).abs() < 1e-9, "×5∘÷7 vs ×11: {}", f);
+    }
+
+    #[test]
+    fn reflection_duality_negation() {
+        // The other geometric opposition: ring reflection. x → -x mod N is
+        // complement (width 1, digit-local) then +1 (width 2), matching the
+        // directly built ×(N-1) at total machine width 2 instead of N-1.
+        use crate::circuit::Circuit;
+        use crate::gates;
+        let profile = vec![2usize, 3, 4]; // N = 24
+        let mut comp_circuit = Circuit::new(profile.clone());
+        for (i, &d) in profile.iter().enumerate() {
+            comp_circuit.one(i, gates::complement(d));
+        }
+        let comp = Mpo::from_circuit(&comp_circuit, SPEC);
+        assert_eq!(comp.max_bond_dim(), 1);
+        let plus1 = Transducer::adder(&profile, 1).to_mpo(SPEC);
+        let neg = plus1.compose_after(&comp, SPEC);
+        let m23 = Transducer::mult(&profile, 23).to_mpo(SPEC);
+        let f = neg.hs_fidelity(&m23);
+        assert!((f - 1.0).abs() < 1e-9, "(+1)∘complement vs ×23: {}", f);
+        assert!(neg.max_bond_dim() <= 2);
     }
 
     #[test]

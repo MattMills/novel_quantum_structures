@@ -80,6 +80,24 @@ pub fn phase_diag(phases: &[f64]) -> Mat {
     })
 }
 
+/// Digit complement `|a⟩ → |d-1-a⟩` — the reflection of a site's levels.
+/// Applied to every site of a chain it maps the ring value `x` to
+/// `N-1-x`: composing with a `+1` carry cascade gives negation
+/// `x → -x mod N` at total machine width 2, however large `N` is.
+pub fn complement(d: usize) -> Mat {
+    Mat::from_fn(
+        d,
+        d,
+        |j, k| {
+            if j == d - 1 - k {
+                C64::ONE
+            } else {
+                C64::ZERO
+            }
+        },
+    )
+}
+
 /// Haar-random `d×d` unitary.
 pub fn random(d: usize, rng: &mut Rng) -> Mat {
     random_unitary(d, rng)

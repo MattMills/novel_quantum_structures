@@ -66,7 +66,12 @@
 //!   adder is the `m = 2` member; modular multiplication `x → kx mod N` is
 //!   the `m = k` member (unitary iff `gcd(k, N) = 1` — number theory as an
 //!   operator property), and the family is closed under composition, so
-//!   modular exponentiation is iterated cascade composition.
+//!   modular exponentiation is iterated cascade composition. Every machine
+//!   has a **geometrically opposed dual** ([`cascade::Transducer::div`]):
+//!   division's remainders sweep the opposite direction from
+//!   multiplication's carries, computing `×k⁻¹` at width `k` instead of
+//!   `k⁻¹ mod N` — enabled by quantum boundary conditions
+//!   ([`cascade::Boundary`]: enter in superposition, postselect the exit).
 //! * [`flow`] — **operators as state-components over operation width**: a
 //!   block becomes a one-parameter flow `t ↦ U^t` (exact fractional powers
 //!   in a diagonalizing Fourier frame), and the [`flow::WidthCursor`] holds
