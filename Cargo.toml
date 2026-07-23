@@ -1,0 +1,16 @@
+[package]
+name = "novel_quantum_structures"
+version = "0.1.0"
+edition = "2021"
+description = "Classically-simulable exploration of twisted zigzag qudit chains: heterogeneous-dimension tensor networks with cross-scale couplings, hosted-qubit sub-simulation, and dynamic scale morphing."
+repository = "https://github.com/MattMills/novel_quantum_structures"
+keywords = ["quantum", "qudit", "tensor-network", "mps", "simulation"]
+categories = ["science", "simulation"]
+
+# Deliberately zero dependencies: complex arithmetic, RNG, QR and a complex
+# Jacobi SVD are implemented in-crate so the whole numerical stack is
+# auditable and builds anywhere.
+[dependencies]
+
+[profile.release]
+debug = true
