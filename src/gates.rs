@@ -127,6 +127,23 @@ pub fn cphase(da: usize, db: usize) -> Mat {
     })
 }
 
+/// Fractional controlled phase `|a,b⟩ → exp(2πi·ab/denom)|a,b⟩` for an
+/// arbitrary real denominator. This is the **tail-radix coupling**: in the
+/// mixed-radix Fourier transform over `Z_N`, output digit `j` couples to
+/// input digit `i ≥ j` with exactly this gate, `denom` being the product of
+/// the radix segment `d_j·d_{j+1}···d_i` (see [`crate::radix`]). Diagonal,
+/// hence unitary for any `denom`.
+pub fn cp_frac(da: usize, db: usize, denom: f64) -> Mat {
+    let n = da * db;
+    Mat::from_fn(n, n, |row, col| {
+        if row != col {
+            return C64::ZERO;
+        }
+        let (a, b) = (col / db, col % db);
+        C64::cis(2.0 * PI * (a * b) as f64 / denom)
+    })
+}
+
 /// Subspace exchange between a `da`-dim and a `db`-dim site: with
 /// `m = min(da, db)`, maps `|a,b⟩ → |b,a⟩` whenever both `a < m` and `b < m`,
 /// and acts as the identity otherwise. A permutation, hence unitary; it is an

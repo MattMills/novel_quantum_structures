@@ -14,3 +14,9 @@ categories = ["science", "simulation"]
 
 [profile.release]
 debug = true
+
+# The crate is numerics-bound with no dependencies: optimized dev builds keep
+# `cargo test` fast (Jacobi sweeps are 20-50x slower at opt-level 0) while
+# debug assertions stay on.
+[profile.dev]
+opt-level = 2

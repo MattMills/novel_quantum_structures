@@ -448,11 +448,92 @@ pub struct TruncatedSvd {
     pub discarded_weight: f64,
 }
 
+/// Orthonormalize the columns of `a` by modified Gram–Schmidt (two
+/// projection rounds), dropping columns that collapse to numerical zero.
+fn orth_columns(a: &Mat) -> Mat {
+    let (m, n) = (a.rows, a.cols);
+    let scale = (0..n)
+        .map(|j| (0..m).map(|i| a.at(i, j).abs2()).sum::<f64>().sqrt())
+        .fold(0.0, f64::max)
+        .max(1e-300);
+    let mut cols: Vec<Vec<C64>> = Vec::with_capacity(n);
+    for j in 0..n {
+        let mut v: Vec<C64> = (0..m).map(|i| a.at(i, j)).collect();
+        for _round in 0..2 {
+            for q in &cols {
+                let mut dot = C64::ZERO;
+                for i in 0..m {
+                    dot += q[i].conj() * v[i];
+                }
+                for i in 0..m {
+                    v[i] -= q[i] * dot;
+                }
+            }
+        }
+        let nrm = v.iter().map(|z| z.abs2()).sum::<f64>().sqrt();
+        if nrm > 1e-13 * scale {
+            let inv = 1.0 / nrm;
+            for z in &mut v {
+                *z = z.scale(inv);
+            }
+            cols.push(v);
+        }
+    }
+    let k = cols.len().max(1);
+    Mat::from_fn(m, k, |i, j| {
+        if j < cols.len() {
+            cols[j][i]
+        } else {
+            C64::ZERO
+        }
+    })
+}
+
+/// Randomized range-finder SVD (Halko–Martinsson–Tropp with one power
+/// iteration): returns a rank-≤`k` factorization capturing the dominant
+/// subspace. The tail beyond the sampled subspace is *not* represented —
+/// [`svd_trunc`] accounts for it against the true Frobenius weight.
+fn randomized_svd(a: &Mat, k: usize, rng_seed: u64) -> Svd {
+    let (m, n) = (a.rows, a.cols);
+    let k = k.min(m).min(n);
+    let mut rng = Rng::new(rng_seed);
+    let omega = Mat::from_fn(n, k, |_, _| rng.c_gaussian());
+    let q0 = orth_columns(&a.mul(&omega));
+    // One power iteration sharpens the captured subspace.
+    let q1 = orth_columns(&a.adjoint().mul(&q0));
+    let q = orth_columns(&a.mul(&q1));
+    let b = q.adjoint().mul(a); // k' × n, k' small
+    let inner = svd(&b);
+    Svd {
+        u: q.mul(&inner.u),
+        s: inner.s,
+        vh: inner.vh,
+    }
+}
+
+const RAND_OVERSAMPLE: usize = 8;
+
 /// SVD followed by rank truncation. Exact zeros (relative to `s[0]`) are
 /// always dropped; at least one singular value is always kept.
+///
+/// When the rank cap is far below the matrix's smaller side, a randomized
+/// range-finder is used instead of the full Jacobi decomposition; any
+/// weight outside the sampled subspace is charged to `discarded_weight`
+/// (measured against the true Frobenius norm), so the accounting stays
+/// honest either way.
 pub fn svd_trunc(a: &Mat, spec: TruncSpec) -> TruncatedSvd {
-    let full = svd(a);
-    let total: f64 = full.s.iter().map(|x| x * x).sum();
+    let min_side = a.rows.min(a.cols);
+    let frob2: f64 = a.data.iter().map(|z| z.abs2()).sum();
+    let use_randomized = spec.max_rank != usize::MAX
+        && min_side >= 128
+        && spec.max_rank + RAND_OVERSAMPLE <= min_side / 2;
+    let full = if use_randomized {
+        let seed = 0x9E3779B97F4A7C15 ^ ((a.rows as u64) << 32) ^ a.cols as u64;
+        randomized_svd(a, spec.max_rank + RAND_OVERSAMPLE, seed)
+    } else {
+        svd(a)
+    };
+    let total: f64 = frob2;
     if total == 0.0 {
         // Zero matrix: keep a single null direction to preserve shapes.
         return TruncatedSvd {
@@ -472,7 +553,11 @@ pub fn svd_trunc(a: &Mat, spec: TruncSpec) -> TruncatedSvd {
     }
     if spec.cutoff > 0.0 {
         let budget = spec.cutoff * total;
-        let mut tail: f64 = full.s[keep..].iter().map(|x| x * x).sum();
+        // Weight already outside the returned factors (randomized-path
+        // projection loss) counts against the budget from the start.
+        let represented: f64 = full.s.iter().map(|x| x * x).sum();
+        let mut tail: f64 =
+            (total - represented).max(0.0) + full.s[keep..].iter().map(|x| x * x).sum::<f64>();
         while keep > 1 {
             let w = full.s[keep - 1] * full.s[keep - 1];
             if tail + w <= budget {
@@ -483,12 +568,21 @@ pub fn svd_trunc(a: &Mat, spec: TruncSpec) -> TruncatedSvd {
             }
         }
     }
-    let kept_weight: f64 = full.s[..keep].iter().map(|x| x * x).sum();
+    // Discarded weight = values actually dropped, plus (randomized path
+    // only) the weight left outside the sampled subspace. Computed from the
+    // dropped values directly so exact splits report an exact zero.
+    let dropped: f64 = full.s[keep..].iter().map(|x| x * x).sum();
+    let projection_loss = if use_randomized {
+        let represented: f64 = full.s.iter().map(|x| x * x).sum();
+        (total - represented).max(0.0)
+    } else {
+        0.0
+    };
     TruncatedSvd {
         u: submat_cols(&full.u, keep),
         s: full.s[..keep].to_vec(),
         vh: submat_rows(&full.vh, keep),
-        discarded_weight: 1.0 - kept_weight / total,
+        discarded_weight: (dropped + projection_loss) / total,
     }
 }
 
@@ -568,6 +662,48 @@ mod tests {
         let total: f64 = full.s.iter().map(|x| x * x).sum();
         let dropped: f64 = full.s[3..].iter().map(|x| x * x).sum();
         assert!((t.discarded_weight - dropped / total).abs() < 1e-12);
+    }
+
+    #[test]
+    fn randomized_path_matches_full_svd() {
+        // A 140×200 matrix with a rank-18 dominant part and a tiny tail:
+        // truncation at max_rank 30 must go through the randomized path and
+        // agree with the full Jacobi decomposition.
+        let mut rng = Rng::new(314);
+        let b = Mat::from_fn(140, 18, |_, _| rng.c_gaussian());
+        let c = Mat::from_fn(18, 200, |_, _| rng.c_gaussian());
+        let mut a = b.mul(&c);
+        for z in &mut a.data {
+            *z += rng.c_gaussian().scale(1e-10);
+        }
+        let spec = TruncSpec::new(30, 1e-12);
+        assert!(
+            spec.max_rank + super::RAND_OVERSAMPLE <= 140 / 2,
+            "test must exercise the randomized path"
+        );
+        let t = svd_trunc(&a, spec);
+        let full = svd(&a);
+        assert!(t.s.len() >= 18);
+        for j in 0..18 {
+            assert!(
+                (t.s[j] - full.s[j]).abs() < 1e-8 * full.s[0],
+                "s[{}]: {} vs {}",
+                j,
+                t.s[j],
+                full.s[j]
+            );
+        }
+        // Reconstruction error at the noise floor.
+        let mut us = t.u.clone();
+        for j in 0..t.s.len() {
+            for i in 0..us.rows {
+                let v = us.at(i, j).scale(t.s[j]);
+                us.set(i, j, v);
+            }
+        }
+        let err = us.mul(&t.vh).max_abs_diff(&a);
+        assert!(err < 1e-7, "reconstruction err {}", err);
+        assert!(t.u.is_isometry(1e-9));
     }
 
     #[test]

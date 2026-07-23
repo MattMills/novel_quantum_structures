@@ -47,6 +47,19 @@
 //!   [`mps::Mps::demote_site`]: the representation itself expands and
 //!   collapses while preserving the state, so a single coarse gate acts as a
 //!   whole fine-scale subcircuit.
+//! * [`mpo`] — **circuit-of-circuits**: whole circuit blocks reified as
+//!   matrix product operators, stored (via the Choi isomorphism) as states
+//!   on the doubled chain — pipeline states stretched between the past and
+//!   future boundaries of the block. Blocks compose
+//!   ([`mpo::Mpo::compose_after`]) and apply ([`mpo::Mpo::apply_to`]) as
+//!   first-class objects, and their bond spectra measure operator
+//!   entanglement — the width of the past↔future correlation pipeline.
+//! * [`radix`] — the **structured tail-radix phase web**: the mixed-radix
+//!   Fourier transform over the chain's ring `Z_N`, whose output digit `j`
+//!   couples only to input digits `i ≥ j` with angle `2π/(d_j···d_i)`;
+//!   Draper phase ramps; and the exact bond-2 carry adder MPO. Together
+//!   with [`mpo`] these realize recursive Fourier-space arithmetic on the
+//!   zigzag chain (`QFT† ∘ ramp ∘ QFT` collapsing to a modular adder).
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -76,7 +89,9 @@ pub mod dense;
 pub mod embed;
 pub mod gates;
 pub mod mat;
+pub mod mpo;
 pub mod mps;
+pub mod radix;
 pub mod zigzag;
 
 pub use c64::C64;

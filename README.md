@@ -14,6 +14,17 @@ The short answers, all verified executable in this repository: **yes, via
 heterogeneous-dimension tensor networks; yes, exactly; and the interesting
 boundary is which circuit families keep the representation compressed.**
 
+A second question follows: can the *operations themselves* become pipeline
+objects — states stretched between the past and the future boundary of a
+circuit block, composed and recursed as first-class values? Also yes: the
+`mpo`/`radix` layers reify circuit blocks as operators, and the structured
+**tail-radix phase web** (the mixed-radix Fourier transform over the chain's
+own ring) gives them something real to compute: `QFT† ∘ ramp ∘ QFT`
+composed as three blocks collapses into a modular adder, adders compose
+recursively into adders, and the whole scheme runs — with one measured,
+instructive precision boundary — on rings of 8.6 trillion elements
+(findings 8–11 below).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -61,6 +72,8 @@ renormalization:
 | `gates` | qudit gates incl. heterogeneous couplers: `cshift`, `cphase`, and `xswap` (subspace exchange — the bidirectional-pair gate) |
 | `embed` | hosted-qubit registers: gate lifting, compilation of qubit circuits onto qudit chains, exact extraction, `qubit_bit_swap` shuttling |
 | `zigzag` | diamond/wave profiles, mirror pairs, valleys & waists, named circuit families (`bowtie`, `crosswave_round`, `brickwork_random`) |
+| `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
+| `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -109,6 +122,45 @@ brickwork on the same wave blows through any fixed χ (severe truncation at
 multi-scale dynamics* — the same line MERA draws between renormalizable and
 volume-law circuits. (`long_wave`)
 
+**8. The chain's ring has a structured tail-radix phase web.** The Fourier
+transform over `Z_N` (`N = Π d_i`) factorizes exactly so that output digit
+`j` couples *only to the tail* of the register (sites `i ≥ j`), through
+fractional controlled phases of angle `2π/(d_j·d_{j+1}···d_i)` — the radix
+segment product. Angles decay super-exponentially with distance, so the web
+is effectively banded. Verified digit-by-digit against the dense DFT kernel.
+(`radix`, `circuit_of_circuits`)
+
+**9. Circuit blocks are pipeline states, and composition collapses them.**
+The QFT over `Z_2880` compiles to an MPO with bond dims `[2,6,8,7,6,2]`
+(≈ 0.8 bits of past↔future correlation per cut). Composing three blocks as
+operators — `QFT† ∘ ramp ∘ QFT` — *collapses* the pipeline into the modular
+adder at bonds `[2,4,4,4,2,1]`: the composite is simpler than its factors,
+and recompression finds that automatically. Verified against the exact
+cyclic shift. A measured aside: the QFT *core* is operator-cheap (χ = 6–8);
+it is the digit-reversal stage — the bowtie mirror permutation — that costs
+χ = 36, and the adder pipeline cancels it between `V` and `V†`.
+(`circuit_of_circuits`, `tests/pipeline.rs`)
+
+**10. Operator recursion is closed and runs both ways.** Adders composed
+with adders stay adders (`A_7 ∘ A_3 = A_10`, χ flat at 3 across six
+self-compositions, each verified), and conjugating back through the Fourier
+frame recovers the bond-1 diagonal ramp. Gate composition has become
+circuit-of-circuits composition. (`circuit_of_circuits`)
+
+**11. Two budgets govern operator composition: entanglement *and*
+precision.** On the 25-site wave the same pipeline builds the adder over
+`Z_8599633920000` as a χ = 6 operator (~84 KB) that is machine-accurate on
+typical inputs — but the deepest carry `|N-1⟩ → |0⟩` rides tail-radix
+couplings of angle `2π/N ≈ 7·10⁻¹³` whose relative operator weight `~1/N`
+falls below any `f64` cutoff, and that single column of the operator is
+lost (Hilbert–Schmidt fidelity vs the exact adder is still 1 − 10⁻⁹:
+average-case operator fidelity is not worst-case). The collapsed form —
+a hand-built bond-2 carry-propagation MPO, `radix::adder_mpo_exact` — is
+exact at any ring size, *provided it is compressed by rank, never by
+weight*: its deep-carry branch has relative Frobenius weight `~1/N`, free
+to keep in rank but fatal to cut. (`circuit_of_circuits`,
+`radix::exact_carry_mpo_handles_the_deepest_carry_at_scale`)
+
 ## Quick start
 
 ```rust
@@ -133,14 +185,28 @@ psi.merge_sites(2);                          // 4·5 → one 20-dit site
 psi.split_site(2, 4, 5);                     // and back
 ```
 
+Circuit-of-circuits — blocks composed as operators:
+
+```rust
+use novel_quantum_structures::{mpo::Mpo, radix};
+
+let spec = TruncSpec::new(96, 1e-12);
+let v = Mpo::from_circuit(&radix::mixed_radix_qft_reversed(&profile, 0.0), spec);
+let d = Mpo::from_circuit(&radix::fourier_phase_ramp_reversed(&profile, 1234), spec);
+let adder = v.adjoint().compose_after(&d.compose_after(&v, spec), spec);
+// adder.bond_dims() == [2, 4, 4, 4, 2, 1] — the pipeline collapsed.
+let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
+```
+
 ## Running
 
 ```sh
-cargo test                                   # 49 tests, dense-vs-MPS cross-validation
+cargo test                                   # 66 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
 cargo run --release --example long_wave
+cargo run --release --example circuit_of_circuits
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -156,7 +222,16 @@ No dependencies; builds with any reasonably recent stable Rust.
   before rotations grind them into the denormal range (a pathology that
   corrupts the significant subspace), and singular values below roundoff
   resolution are reported as exact zeros rather than normalized into fake
-  directions.
+  directions. Strongly rank-capped truncations of large matrices go through
+  a randomized range-finder (Halko-style, one power iteration) whose
+  unsampled weight is charged honestly to the discard tally.
+* **Truncate only against canonical environments.** Raw (freshly
+  contracted) bond coordinates distort Schmidt weights — a rank cap applied
+  there can slice through degenerate subspaces that carry real weight, a
+  bug this library hit and now tests against. `Mps::recompress` therefore
+  shrinks bonds exactly by a meet-in-the-middle sweep choreography (no SVD
+  ever runs at raw-product width on both sides) and applies the lossy pass
+  only in canonical form.
 * **Truncation is honest.** Every discarded Schmidt weight is tallied on the
   state (`discarded_weight`); exact runs report exactly 0.
 
@@ -166,11 +241,23 @@ No dependencies; builds with any reasonably recent stable Rust.
   boundary measured in `long_wave` invites a systematic study: Clifford-like
   qudit circuits, cross-scale couplings only, dimension-commensurate gates
   (`gcd`-respecting `cshift`/`cphase` webs)…
+* **Fourier-space arithmetic beyond addition.** The adder pipeline
+  (finding 9) begs for multiplication: `x → k·x mod N` as a composed block,
+  and from there modular exponentiation — the Shor kernel — as a circuit of
+  circuits over the zigzag's ring, with operator entanglement as the cost
+  meter.
 * **`xswap` as a disentangler.** For mirror-symmetric correlations the
   subspace exchange can relocate entanglement toward the waist before
   truncation — a MERA-style disentangler adapted to the wave. The
   diagnostics (`schmidt_spectra`) are in place to measure whether it earns
   its keep.
+* **Temporal pipelines.** The MPO layer treats a block's past/future
+  boundaries as single chain slices; the process-tensor generalization —
+  boundaries spanning *several time slices*, contracted along the space
+  axis — is the natural next rung of the "pipeline of expectations."
+* **Higher-precision carriers.** Finding 11 shows `f64` spectral weight is
+  a real resource boundary at `N ≳ 10¹²`; a `f128`/double-double carrier
+  would push Fourier-composed arithmetic several orders further.
 * **Dynamic profiles.** `promote`/`demote`/`merge`/`split` allow the wave
   itself to evolve during a computation — an adaptive-geometry simulator
   where the dimension profile tracks where entanglement wants to live.

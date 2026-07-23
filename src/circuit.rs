@@ -54,6 +54,24 @@ impl Circuit {
         self
     }
 
+    /// The inverse circuit: gates adjointed, order reversed. For unitary
+    /// gate lists this is the exact inverse.
+    pub fn adjoint(&self) -> Circuit {
+        let ops = self
+            .ops
+            .iter()
+            .rev()
+            .map(|op| match op {
+                Op::One(s, g) => Op::One(*s, g.adjoint()),
+                Op::Two(a, b, g) => Op::Two(*a, *b, g.adjoint()),
+            })
+            .collect();
+        Circuit {
+            dims: self.dims.clone(),
+            ops,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.ops.len()
     }

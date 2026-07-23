@@ -286,6 +286,48 @@ impl Mps {
         }
     }
 
+    /// Rebuild the canonical form from scratch and truncate every bond with
+    /// the state's policy: an exact left→right sweep followed by a
+    /// truncating right→left sweep. Valid regardless of the current
+    /// canonical state (used after manual tensor surgery, e.g. MPO
+    /// application); leaves the center at site 0.
+    pub fn recompress(&mut self) {
+        let n = self.num_sites();
+        if n == 1 {
+            self.center = 0;
+            return;
+        }
+        // Truncating against a non-canonical environment is unsafe: raw
+        // (e.g. freshly-contracted MPO-product) bond coordinates distort the
+        // Schmidt weights, so a rank cap there can slice through genuinely
+        // needed directions. Every lossy step below therefore happens with a
+        // canonical environment; the first two passes are exact
+        // (rank-revealing only).
+        //
+        // Cost control is by sweep choreography ("meet in the middle"):
+        // pass 0 shrinks bonds inward from the right edge while the right
+        // side is the smaller side of the matricization, so pass 1's
+        // left-to-right exact sweep always sees its right bond already
+        // reduced to true-rank scale — no SVD ever runs at raw-product
+        // width on both sides.
+        for m in (1..n).rev() {
+            let t = &self.tensors[m];
+            if t.d * t.dr > t.dl {
+                break;
+            }
+            self.push_left(m, TruncSpec::exact());
+        }
+        for m in 0..n - 1 {
+            self.push_right(m, TruncSpec::exact());
+        }
+        self.center = n - 1;
+        let spec = self.trunc;
+        for m in (1..n).rev() {
+            self.push_left(m, spec);
+        }
+        self.center = 0;
+    }
+
     /// Move the orthogonality center to `target` (exact — only numerically
     /// null Schmidt directions are dropped).
     pub fn move_center_to(&mut self, target: usize) {
@@ -573,6 +615,24 @@ impl Mps {
             dims: self.dims.clone(),
             amps: acc.data,
         }
+    }
+
+    /// Marginal probabilities of the basis levels of `site` (assumes the
+    /// state is normalized). Moves the orthogonality center.
+    pub fn site_probabilities(&mut self, site: usize) -> Vec<f64> {
+        self.move_center_to(site);
+        let t = &self.tensors[site];
+        (0..t.d)
+            .map(|p| {
+                let mut acc = 0.0;
+                for l in 0..t.dl {
+                    for r in 0..t.dr {
+                        acc += t.at(l, p, r).abs2();
+                    }
+                }
+                acc
+            })
+            .collect()
     }
 
     /// Normalized Schmidt spectra across every bond (`n-1` entries). Leaves
