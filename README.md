@@ -50,6 +50,14 @@ that repairs the number representation with an exact `1/(k²+1)` law, and a
 rank-one damper makes the repair exponential at a rate you choose
 (finding 19 below).
 
+And a sixth: is a state one representation, or a *tower* of them? The `sheaf`
+layer fuses sites into ever coarser, higher-dimensional qudits — one state at
+many resolutions, each an exact *section of the bulk* (a cellular sheaf with
+restriction and gluing). Running a computation at a coarser resolution is
+measurably faster (fewer canonicalization sweeps), until the qudit dimension
+— a product of the fused dims — explodes: a performance menu with a sweet
+spot (finding 20 below).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -102,6 +110,7 @@ renormalization:
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
 | `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `sheaf` | **bulk sheaf towers**: lossless site fusion (`coarsen`/`refine`) building a tower of exact re-representations at growing qudit dimension, restriction/gluing as a cellular sheaf, and `coarsen_mpo` to run a computation at coarser resolution |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -287,6 +296,25 @@ makes stabilization exponential — 1001 iterations at γ = 1 collapse to
 the boundary, not inside the operator. (`stabilize`,
 `self_stabilizing_boundaries`)
 
+**20. One state has a tower of exact resolutions — a performance menu.**
+Fusing neighbouring sites into coarser, higher-dimensional qudits is
+lossless (the interior bond becomes intra-site structure), so a state carries
+a whole tower of representations at growing local dimension. On the `2..8`
+diamond: 13 sites (max d 8) → 7 (max d 56) → 4 (max d 2352), **every layer
+the identical global section at fidelity 1** — pure re-gauging, "only for
+performance." The tower is a *cellular sheaf*: restriction (slice) and
+gluing (contract) are exact inverses, a cover glues back to the whole, and
+gluing is associative (the sheaf axiom, executable). Coarsening the state
+*and the operator together* (`coarsen_mpo`, whose Choi legs must be
+de-interleaved — a bug caught and fixed) runs a computation at coarser
+resolution: on 14 qubits a fixed operator application is **4.3× faster at
+block 5 than at the fine scale, bit-identical**, because canonicalization
+sweeps scale with site count. The win is bounded, though — local dimension
+is a *product* of the fused dims, so it explodes past small blocks (fusing
+quads of the diamond already hits d = 2352). The rule: coarsen to shed
+site-count overhead, stop before the qudit dimension exceeds your budget.
+(`sheaf`, `bulk_sheaf_tower`)
+
 ## Quick start
 
 ```rust
@@ -327,7 +355,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 88 tests, dense-vs-MPS cross-validation
+cargo test                                   # 94 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -337,6 +365,7 @@ cargo run --release --example operator_width_cursor
 cargo run --release --example stepwise_cascade
 cargo run --release --example opposed_fronts
 cargo run --release --example self_stabilizing_boundaries
+cargo run --release --example bulk_sheaf_tower
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

@@ -79,6 +79,16 @@
 //!   at the focus, coarsen behind it, total composition invariant. Bond
 //!   dimension along the flow *measures* operation width: it collapses at
 //!   integer shifts and widens at fractional ones.
+//! * [`sheaf`] — **bulk sheaf towers**: fusing neighbouring sites into
+//!   coarser, higher-dimensional qudits is lossless, so one state has a tower
+//!   of exact representations (fine → coarse, local dimension growing past
+//!   10 into the hundreds), each a *section of the bulk* at a coarser
+//!   resolution. Restriction ([`sheaf::restrict`]) and gluing
+//!   ([`sheaf::glue`]) make it a cellular sheaf; coarsening the state and
+//!   operator together ([`sheaf::coarsen_mpo`]) runs a computation at coarser
+//!   resolution for a real speedup — until local dimension (a product of the
+//!   fused dims) explodes. The tower is a performance menu over one invariant
+//!   state.
 //! * [`stabilize`] — **self-stabilizing boundary systems**: close a cascade's
 //!   message loop ([`cascade::Transducer::to_mpo_looped`]) and it becomes a
 //!   non-unitary dynamical system with a designed attractor. The traced
@@ -122,6 +132,7 @@ pub mod mat;
 pub mod mpo;
 pub mod mps;
 pub mod radix;
+pub mod sheaf;
 pub mod stabilize;
 pub mod zigzag;
 
