@@ -110,12 +110,21 @@ pub fn fourier_phase_ramp(profile: &[usize], c_add: usize) -> Circuit {
 /// adder `|x⟩ → |x+c mod N⟩` in *standard* digits on **any** profile — no
 /// mirror-swap stage, and every block stays MPO-compact.
 pub fn fourier_phase_ramp_reversed(profile: &[usize], c_add: usize) -> Circuit {
+    fourier_phase_ramp_reversed_real(profile, c_add as f64)
+}
+
+/// [`fourier_phase_ramp_reversed`] for a **real-valued** shift amount: the
+/// factorization `exp(2πi·c·y/N) = Π_j exp(2πi·c·y_j·Q_j/N)` is exact for
+/// any real `c`, so this is the generator of the *continuous* translation
+/// flow on the ring — the heart of fractional operator powers
+/// (see [`crate::flow`]).
+pub fn fourier_phase_ramp_reversed_real(profile: &[usize], c_add: f64) -> Circuit {
     let n_total: f64 = profile.iter().map(|&d| d as f64).product();
     let mut c = Circuit::new(profile.to_vec());
     let mut q_place = 1.0f64;
     for (j, &d) in profile.iter().enumerate() {
         let phases: Vec<f64> = (0..d)
-            .map(|y| 2.0 * PI * (c_add as f64) * (y as f64) * q_place / n_total)
+            .map(|y| 2.0 * PI * c_add * (y as f64) * q_place / n_total)
             .collect();
         c.one(j, gates::phase_diag(&phases));
         q_place *= d as f64;

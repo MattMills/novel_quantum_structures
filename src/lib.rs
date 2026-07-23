@@ -60,6 +60,13 @@
 //!   Draper phase ramps; and the exact bond-2 carry adder MPO. Together
 //!   with [`mpo`] these realize recursive Fourier-space arithmetic on the
 //!   zigzag chain (`QFT† ∘ ramp ∘ QFT` collapsing to a modular adder).
+//! * [`flow`] — **operators as state-components over operation width**: a
+//!   block becomes a one-parameter flow `t ↦ U^t` (exact fractional powers
+//!   in a diagonalizing Fourier frame), and the [`flow::WidthCursor`] holds
+//!   a pipeline of flow segments at adaptive temporal resolution — refine
+//!   at the focus, coarsen behind it, total composition invariant. Bond
+//!   dimension along the flow *measures* operation width: it collapses at
+//!   integer shifts and widens at fractional ones.
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -87,6 +94,7 @@ pub mod c64;
 pub mod circuit;
 pub mod dense;
 pub mod embed;
+pub mod flow;
 pub mod gates;
 pub mod mat;
 pub mod mpo;

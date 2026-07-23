@@ -25,6 +25,16 @@ recursively into adders, and the whole scheme runs — with one measured,
 instructive precision boundary — on rings of 8.6 trillion elements
 (findings 8–11 below).
 
+And a third: is an operation one object, or a *flow* — divisible into ever
+finer temporal grain? The `flow` layer extends every block to an exact
+one-parameter group `t ↦ U^t` and drives an **operation-width cursor** over
+it: a pipeline of flow segments refined at the focus and coarsened behind
+it, with the total invariant. The headline measurements: bond dimension
+along the flow *sees the integers* (χ = 3 at whole shifts, 9–11 between),
+the same coarse block admits Hilbert–Schmidt-*orthogonal* half-imputations
+of different widths, and states walking the refined pipeline follow an
+exact drift-plus-lattice-wobble law (findings 12–14 below).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -74,6 +84,7 @@ renormalization:
 | `zigzag` | diamond/wave profiles, mirror pairs, valleys & waists, named circuit families (`bowtie`, `crosswave_round`, `brickwork_random`) |
 | `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
+| `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -161,6 +172,34 @@ weight*: its deep-carry branch has relative Frobenius weight `~1/N`, free
 to keep in rank but fatal to cut. (`circuit_of_circuits`,
 `radix::exact_carry_mpo_handles_the_deepest_carry_at_scale`)
 
+**12. Operators are flows, and width sees the integers.** Every block
+extends to an exact one-parameter group `U^t = V†·D(t)·V` (fractional
+powers are free in the Fourier frame; `U^s ∘ U^t = U^{s+t}` verified at
+10⁻⁸). Scanning the continuous shift over `Z_2880` for `t ∈ [0, 2]`: bond
+dimension collapses to 3 exactly at integer widths (crisp permutations) and
+sits at 9–11 in between (delocalized sinc kernels), with operator
+entanglement peaking mid-flow — **arithmetic quantization read directly off
+operation width**. (`flow`, `operator_width_cursor`)
+
+**13. Imputation has geometry.** The same coarse block factors into
+geodesic halves `U^½·U^½` (χ = 11 each) or causal halves through the
+Fourier frame (χ = 8 each); both products reproduce the block at fidelity
+1.000000000, yet the two midpoints are *Hilbert–Schmidt orthogonal*
+(overlap 0.000000) — genuinely different curves through operator space
+with identical endpoints. Decomposing a coarse operation into finer ones is
+a geometric *choice*, with measurable width costs per route.
+(`operator_width_cursor`)
+
+**14. The operation-width cursor works.** A pipeline over the flow refines
+dyadically at its leading edge — coarse past, increasingly fine present —
+with the total composition invariant (fidelity 1.000000000 at every zoom
+level). A state stepped through the refined pipeline drifts along the ring
+following the exact first-moment law `⟨ω^x⟩ = ω^{x₀+t}·((N−1)+e^{−2πit})/N`
+— linear motion plus a **lattice wobble** of amplitude `1/2π` (the ring's
+discreteness pushing back on the continuous flow), participation breathing
+`1 → ⅔ → ⅓ → ⅔ → 1`, and exact relocalization at whole width.
+(`flow::WidthCursor`, `operator_width_cursor`)
+
 ## Quick start
 
 ```rust
@@ -201,12 +240,13 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 66 tests, dense-vs-MPS cross-validation
+cargo test                                   # 71 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
 cargo run --release --example long_wave
 cargo run --release --example circuit_of_circuits
+cargo run --release --example operator_width_cursor
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -251,10 +291,18 @@ No dependencies; builds with any reasonably recent stable Rust.
   truncation — a MERA-style disentangler adapted to the wave. The
   diagnostics (`schmidt_spectra`) are in place to measure whether it earns
   its keep.
-* **Temporal pipelines.** The MPO layer treats a block's past/future
-  boundaries as single chain slices; the process-tensor generalization —
+* **Temporal pipelines.** The width cursor is the first rung: flow
+  segments at adaptive grain. The process-tensor generalization —
   boundaries spanning *several time slices*, contracted along the space
-  axis — is the natural next rung of the "pipeline of expectations."
+  axis — is the next.
+* **Flows beyond the shift family.** `FourierFlow` diagonalizes the adder
+  family; fractional powers of the QFT itself (the fractional Fourier
+  transform over `Z_N` as an MPO flow) need `V`'s own eigenframe — open,
+  and the natural test of whether "width sees structure" generalizes.
+* **Width-optimal imputation.** Finding 13 shows factorization routes have
+  different width costs; searching decomposition space for minimal-width
+  pipelines (the causal detour beat the geodesic here) is an optimization
+  problem this library can now pose concretely.
 * **Higher-precision carriers.** Finding 11 shows `f64` spectral weight is
   a real resource boundary at `N ≳ 10¹²`; a `f128`/double-double carrier
   would push Fourier-composed arithmetic several orders further.
