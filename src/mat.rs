@@ -298,19 +298,103 @@ pub struct Svd {
     pub vh: Mat,
 }
 
-/// Full (economy) SVD via one-sided Jacobi rotations.
+/// Full (economy) SVD via one-sided Jacobi rotations. Strongly tall
+/// matrices are first reduced by an MGS QR so the Jacobi sweep runs on the
+/// small square factor (rotation cost scales with row count).
 pub fn svd(a: &Mat) -> Svd {
     if a.rows >= a.cols {
+        if a.rows >= 2 * a.cols && a.cols > 8 {
+            let (q, r) = qr_mgs(a);
+            // Pad both factors to n columns/rows: null directions carry
+            // zero singular values and are zeroed by the extraction anyway.
+            let q_pad = Mat::from_fn(a.rows, a.cols, |i, j| {
+                if j < q.cols {
+                    q.at(i, j)
+                } else {
+                    C64::ZERO
+                }
+            });
+            let inner = jacobi_svd_tall(&pad_rows_square(&r, a.cols));
+            return Svd {
+                u: q_pad.mul(&inner.u),
+                s: inner.s,
+                vh: inner.vh,
+            };
+        }
         jacobi_svd_tall(a)
     } else {
         // A = (A†)† ; A† is tall. If A† = U' Σ V'† then A = V' Σ U'†.
-        let inner = jacobi_svd_tall(&a.adjoint());
+        let inner = svd(&a.adjoint());
         Svd {
             u: inner.vh.adjoint(),
             s: inner.s,
             vh: inner.u.adjoint(),
         }
     }
+}
+
+/// MGS QR with two projection rounds: `a = q·r`, `q` with `k ≤ n`
+/// orthonormal columns (numerically null columns dropped), `r` `k×n`.
+fn qr_mgs(a: &Mat) -> (Mat, Mat) {
+    let (m, n) = (a.rows, a.cols);
+    let scale = (0..n)
+        .map(|j| (0..m).map(|i| a.at(i, j).abs2()).sum::<f64>().sqrt())
+        .fold(0.0, f64::max)
+        .max(1e-300);
+    let mut q_cols: Vec<Vec<C64>> = Vec::new();
+    let mut r_rows: Vec<Vec<C64>> = Vec::new(); // r_rows[i][j] = coefficient of q_i in a_j
+    for j in 0..n {
+        let mut v: Vec<C64> = (0..m).map(|i| a.at(i, j)).collect();
+        let mut coeffs = vec![C64::ZERO; q_cols.len()];
+        for _round in 0..2 {
+            for (i, q) in q_cols.iter().enumerate() {
+                let mut dot = C64::ZERO;
+                for (qi, vi) in q.iter().zip(v.iter()) {
+                    dot += qi.conj() * *vi;
+                }
+                coeffs[i] += dot;
+                for (qi, vi) in q.iter().zip(v.iter_mut()) {
+                    *vi -= *qi * dot;
+                }
+            }
+        }
+        for (i, c) in coeffs.into_iter().enumerate() {
+            r_rows[i].push(c);
+        }
+        let nrm = v.iter().map(|z| z.abs2()).sum::<f64>().sqrt();
+        if nrm > 1e-13 * scale {
+            let inv = 1.0 / nrm;
+            for z in &mut v {
+                *z = z.scale(inv);
+            }
+            q_cols.push(v);
+            let mut row = vec![C64::ZERO; j];
+            row.push(C64::real(nrm));
+            r_rows.push(row);
+        }
+    }
+    let k = q_cols.len().max(1);
+    let q = Mat::from_fn(m, k, |i, j| {
+        if j < q_cols.len() {
+            q_cols[j][i]
+        } else {
+            C64::ZERO
+        }
+    });
+    let r = Mat::from_fn(k, n, |i, j| {
+        if i < r_rows.len() && j < r_rows[i].len() {
+            r_rows[i][j]
+        } else {
+            C64::ZERO
+        }
+    });
+    (q, r)
+}
+
+/// Pad `r` (k×n, k ≤ n) with zero rows to n×n so the tall Jacobi kernel
+/// applies directly.
+fn pad_rows_square(r: &Mat, n: usize) -> Mat {
+    Mat::from_fn(n, n, |i, j| if i < r.rows { r.at(i, j) } else { C64::ZERO })
 }
 
 /// One-sided Jacobi for `m >= n`: rotates column pairs of a working copy `w`
@@ -662,6 +746,32 @@ mod tests {
         let total: f64 = full.s.iter().map(|x| x * x).sum();
         let dropped: f64 = full.s[3..].iter().map(|x| x * x).sum();
         assert!((t.discarded_weight - dropped / total).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tall_qr_path_matches_direct_jacobi() {
+        // Tall matrices (rows ≥ 2·cols) take the QR-then-Jacobi route; it
+        // must agree with the reconstruction contract, including
+        // rank-deficient inputs.
+        let mut rng = Rng::new(1618);
+        for &(m, n, rank) in &[(64usize, 20usize, 20usize), (100, 12, 5), (90, 30, 30)] {
+            let b = Mat::from_fn(m, rank, |_, _| rng.c_gaussian());
+            let c = Mat::from_fn(rank, n, |_, _| rng.c_gaussian());
+            let a = b.mul(&c);
+            let d = svd(&a);
+            let err = reconstruct(&d).max_abs_diff(&a);
+            assert!(
+                err < 1e-9 * d.s[0].max(1e-300),
+                "{}x{} rank {}: err {}",
+                m,
+                n,
+                rank,
+                err
+            );
+            for w in d.s.windows(2) {
+                assert!(w[0] >= w[1] - 1e-12);
+            }
+        }
     }
 
     #[test]

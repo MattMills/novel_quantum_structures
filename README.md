@@ -35,6 +35,13 @@ the same coarse block admits Hilbert–Schmidt-*orthogonal* half-imputations
 of different widths, and states walking the refined pipeline follow an
 exact drift-plus-lattice-wobble law (findings 12–14 below).
 
+Finally, the operators that *compute* here are **stepwise cascades**:
+finite-state transducers whose message rides the MPO bond. Modular
+multiplication joins the adder as an exact cascade, the family composes
+recursively toward modular exponentiation, and the measured operator width
+of `×k` turns out to be number-theoretically resonant — non-monotone in k
+(findings 15–17 below).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -85,6 +92,7 @@ renormalization:
 | `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
+| `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -200,6 +208,38 @@ discreteness pushing back on the continuous flow), participation breathing
 `1 → ⅔ → ⅓ → ⅔ → 1`, and exact relocalization at whole width.
 (`flow::WidthCursor`, `operator_width_cursor`)
 
+**15. Stepwise cascades are a first-class operator family.** A transducer —
+a finite-state machine sweeping the chain with its message riding the MPO
+bond — lifts to an operator whose bond dimension *is* the width of the
+classical information front. The carry adder is the `m = 2` member; modular
+multiplication `x → kx mod N` is the `m = k` member (the digit-carry rule
+`(digit, carry) ↔ k·digit + carry` is a bijection at every site). `×7` on
+the 8.6-trillion-element wave builds in under a millisecond with the
+worst-case carry exact; the family composes recursively (`×7 ∘ ×11 = ×77`
+with the composed and directly-built operators matching bond-for-bond, and
+adders braiding with multipliers into affine maps). (`cascade`,
+`stepwise_cascade`)
+
+**16. The true width of modular multiplication is number-theoretic — and
+non-monotone.** Repeated squaring `7 → 49 → 2401 → 1921 (mod 2880)` gives
+measured operator widths `7 → 24 → 6 → 3`. The message bound `k` collapses
+across each cut: with right-side size `S` and left ring `L = N/S`, the
+carry entering the cut is `c = ⌊kb/S⌋` and only `c mod L` matters — at the
+diamond's waist (`S = 120, L = 24`), `×2401` has `c = 20b`, taking
+`24/gcd(20,24) = 6` values, and `×1921` has `c = 16b`, taking
+`24/gcd(16,24) = 3`. **Multiplying by 1921 is a thinner operator than
+multiplying by 7.** The cost curve of modular exponentiation on a chain is
+resonant, not monotone. (`stepwise_cascade`)
+
+**17. Fourier conjugation reverses the cascade; gcd breaks unitarity.**
+`V ∘ (×k) ∘ V†` equals `×k⁻¹` *with the carry sweep running in the opposite
+direction* (the scaling theorem transported through the reversed-digit
+frame; verified at fidelity 1 on a non-palindromic chain). And a cascade is
+unitary exactly when its arithmetic is invertible: `×6` on `Z_2880`
+(gcd = 6) shows unitarity defect 0.833 = 1 − 1/6 with an explicit image
+collision `|0⟩, |480⟩ → |0⟩` — number theory surfacing as an operator
+property. (`cascade`, `stepwise_cascade`)
+
 ## Quick start
 
 ```rust
@@ -240,13 +280,14 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 71 tests, dense-vs-MPS cross-validation
+cargo test                                   # 78 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
 cargo run --release --example long_wave
 cargo run --release --example circuit_of_circuits
 cargo run --release --example operator_width_cursor
+cargo run --release --example stepwise_cascade
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

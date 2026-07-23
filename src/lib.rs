@@ -60,6 +60,13 @@
 //!   Draper phase ramps; and the exact bond-2 carry adder MPO. Together
 //!   with [`mpo`] these realize recursive Fourier-space arithmetic on the
 //!   zigzag chain (`QFT† ∘ ramp ∘ QFT` collapsing to a modular adder).
+//! * [`cascade`] — **stepwise cascade operators**: finite-state transducers
+//!   lifted to MPOs, with the classical message riding the virtual bond —
+//!   bond dimension *is* the width of the information front. The carry
+//!   adder is the `m = 2` member; modular multiplication `x → kx mod N` is
+//!   the `m = k` member (unitary iff `gcd(k, N) = 1` — number theory as an
+//!   operator property), and the family is closed under composition, so
+//!   modular exponentiation is iterated cascade composition.
 //! * [`flow`] — **operators as state-components over operation width**: a
 //!   block becomes a one-parameter flow `t ↦ U^t` (exact fractional powers
 //!   in a diagonalizing Fourier frame), and the [`flow::WidthCursor`] holds
@@ -91,6 +98,7 @@
 //! ```
 
 pub mod c64;
+pub mod cascade;
 pub mod circuit;
 pub mod dense;
 pub mod embed;
