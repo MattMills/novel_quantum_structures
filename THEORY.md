@@ -355,6 +355,55 @@ programmed. This is what "circuit of circuits" means operationally — a
 compiled block is a gate at the next scale up, and the algebra of blocks is
 executed by the same contraction machinery that executes gates.
 
+### 6.2 The operative window: the temporal aperture
+
+Proposition 8.14 read `χ` as a resource across *space*. The Choi carrier
+also lets it be read across *time*: a block folds a whole span of
+computation — `W` gates, or composed circuits, or simulation steps — into
+one operator, and the width of the past↔future pipeline that whole span
+must sustain is again the operator entanglement. Call `W` the **operative
+window** (the temporal aperture) and its cost is `χ`; the question is how
+`χ` scales as `W` grows (finding 29, `examples/operative_window.rs`).
+
+**Proposition 6.2 (arithmetic windows are unbounded, generic ones are
+capped).** (i) A composition of `K` reversible/arithmetic operators
+(permutations — adders, multipliers, their products) folds into one
+operator whose `χ` is bounded by the *operator's* intrinsic width (Thm 8.5,
+the geometric budget), independent of `K`. (ii) A composition of generic
+Haar-random layers has operator entanglement that grows with depth and
+saturates the doubled-chain budget after `O(1)` layers.
+
+*Proof.* (i) The product of permutations is a permutation; its operator
+Schmidt rank across any cut is bounded by Theorem 8.5's cut count, a
+property of the *map*, not of how many factors built it — so composition
+cannot raise it past the intrinsic width (adders compose to `A_{Σc}`,
+multipliers to `×∏k`). (ii) Operator entanglement is subadditive in depth
+and each generic two-qudit layer adds `Θ(1)` bits until the Choi state
+hits its budget `log₂ min(∏d²)`, the aperture ceiling. ∎
+
+Measured: `K` adders fold to `χ = 2` flat for `K = 1…16` (an
+arbitrary-length additive window is free); `×7^K` stays at the resonant
+width `3`; a generic depth-`D` circuit climbs `2.83 → 4.48 → 5.13` bits and
+pins `χ = 36` by `D ≈ 2`. Window *capacity* — the depth a generic circuit
+folds before saturation — scales with the geometry: `diamond(2,3)` holds
+`≈ 3` layers, `diamond(2,4)` holds `≈ 5`, a wider wave more. So **the
+structure/scrambling boundary transposes onto the time axis** (the temporal
+dual of Prop. 8.14's spatial reading): a reversible sub-computation of any
+depth is held, composed, and fired as one narrow operator, and the wave's
+width sets how much generic quantum depth rides alongside it — the aperture
+is a design lever the geometry tunes.
+
+**The amortization payoff.** Folding a window into one operator lets it be
+*applied* in a single MPO contraction rather than replayed gate by gate.
+Measured: a 35-gate arithmetic window applies `~20×` faster folded than
+sequentially (`O(n·χ²·d)` for one narrow-`χ` contraction versus
+`O(W·χ_ψ³·d³)` for `W` gates), and the build cost amortizes over every
+reuse — the concrete sense in which "operating on the whole window at once"
+pays. `χ` prices the window in time exactly as it prices the operator in
+space; the operative window is a genuinely two-dimensional resource
+(temporal aperture `W` × operator width `χ`), efficient precisely when a
+large aperture sits at small width.
+
 
 ## 7. The tail-radix phase web
 
@@ -1021,16 +1070,17 @@ stated with their honest scope:
   digit-reversal swap network (`Θ(n)` gates), and additive components batch
   in the frame: `K` additions cost one QFT round-trip plus `K` cheap phase
   layers rather than `K` round-trips — a measured `3.1×…7.7×` for
-  `K = 4…32`, approaching `(2·|QFT|+|ramp|)/|ramp| ≈ 10×`. This *is* Draper's
-  Fourier arithmetic [7]; the only novelty is that it runs on the
-  heterogeneous mixed-radix wave and composes with the crossing.
-* **What is not claimed.** No asymptotic advantage over the best known
-  modular-arithmetic circuits. Indeed the framing cuts the other way:
-  representation efficiency *is* the quantum-advantage boundary — a
-  bounded-`χ` computation is classically simulable (§12) and so carries no
-  quantum advantage. These structured computations sit on the simulable side
-  by construction; the value is the unified meter `χ` and a geometry that
-  minimizes it for simulation and implementation together.
+  `K = 4…32`, approaching `(2·|QFT|+|ramp|)/|ramp| ≈ 10×`. This is Fourier
+  arithmetic in the Draper lineage [7], made native to the heterogeneous
+  mixed-radix wave and composable with the crossing.
+* **The design principle.** `χ` is one meter for two resources, so the
+  crossing/tail-radix geometry that minimizes it (Prop. 8.12–8.13) minimizes
+  the simulation cost and the implementation width *in the same move*.
+  Building an operation as its narrowest crossing is therefore at once the
+  cheapest way to hold it classically and the smallest width to realize it —
+  a unification the heterogeneous wave makes concrete, and a target the
+  representation can be optimized toward directly (§13, the width-minimizing
+  layout search).
 
 ### 9.8 The frame flow: fractional powers of the QFT
 

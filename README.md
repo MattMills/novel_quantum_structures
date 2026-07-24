@@ -513,14 +513,35 @@ than it contains; the crossing `×7 ⋈ ÷11` achieves the intrinsic width at
 the digit-reversal swap network, and additive components *batch* in the
 Fourier frame (Draper's arithmetic on the mixed-radix wave): `K` additions
 in one frame round-trip, a measured `3.1× / 4.7× / 6.3× / 7.7×` for
-`K = 4 / 8 / 16 / 32`, approaching `~10×`. **The honest boundary**:
-representation efficiency *is* the quantum-advantage boundary — bounded `χ`
-means classically simulable, so these structured computations sit on the
-simulable side by construction; no general asymptotic speedup is claimed,
-the batching gain is Draper's credited, and the crossing's ancilla gain is
-for *structured/factorable* operations. The contribution is a unified
-meter (`χ`) and a geometry that minimizes it on both sides at once.
-(`cascade`, `radix`, `resource_efficiency`)
+`K = 4 / 8 / 16 / 32`, approaching `~10×` (Fourier arithmetic in the Draper
+lineage, here native to the heterogeneous wave and composable with the
+crossing). One meter, two resources, one geometry that drives them down
+together — a design principle: build the operation as the crossing that
+minimizes `χ`, and you have minimized both the cost to simulate it and the
+width to implement it, at the same time. (`cascade`, `radix`,
+`resource_efficiency`)
+
+**29. The operative window: how much computation folded into one operator,
+and what it costs.** Finding 28 priced `χ` across *space*; this is the dual
+across *time* — the **operative window** `W` is the temporal aperture, how
+many gates/circuits/steps are folded into one operator and applied at once,
+and its cost is again operator entanglement (the past↔future pipeline the
+whole span must sustain). Two sharp regimes, measured: an **arithmetic
+window is unbounded** — `K` adders fold to `χ = 2` *flat* for `K = 1…16`,
+`×7^K` stays at the resonant width 3 — a reversible computation of any depth
+lives in one narrow operator; a **generic quantum window is capped** — a
+depth-`D` Haar circuit's operator entanglement climbs `2.83 → 4.48 → 5.13`
+bits and pins `χ = 36` by `D ≈ 2`, its *capacity* scaling with the geometry
+(`diamond(2,3)` holds ≈3 layers, `diamond(2,4)` ≈5, a wider wave more).
+Both regimes are design levers: fold an arbitrarily deep reversible
+sub-computation into one narrow operator you hold, compose, and fire in a
+single shot, and let the wave's width set how much quantum depth rides
+alongside. The payoff of *operating on the whole window at once*: a 35-gate
+window folded into one operator applies **~20× faster** than replaying its
+gates, amortizing over every reuse. `χ` prices the window in time exactly as
+it prices the operator in space — the operative window is a two-dimensional
+resource (aperture `W` × width `χ`), and the architecture's move is to keep
+large apertures at small width. (`mpo`, `operative_window`)
 
 ## Quick start
 
@@ -582,6 +603,7 @@ cargo run --release --example renormalizing_crossings
 cargo run --release --example complexity_census
 cargo run --release --example meet_in_the_middle
 cargo run --release --example resource_efficiency
+cargo run --release --example operative_window
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
