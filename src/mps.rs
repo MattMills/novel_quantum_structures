@@ -717,6 +717,33 @@ impl Mps {
         out
     }
 
+    /// Von Neumann entanglement entropy in **bits** across a *single* bond
+    /// `m`, by canonicalizing to it and taking one SVD — `O(χ³)`, versus
+    /// the `O(n·χ³)` full sweep of [`Mps::bond_entropies_bits`]. Use this
+    /// when only one cut's entropy is wanted (e.g. an inter-strand A|B
+    /// bond, [`crate::crossing`]). Leaves the center at `m`.
+    pub fn bond_entropy_bits_at(&mut self, m: usize) -> f64 {
+        assert!(m + 1 < self.num_sites(), "bond index out of range");
+        self.move_center_to(m);
+        let t = &self.tensors[m];
+        let mm = Mat::from_fn(t.dl * t.d, t.dr, |row, r| t.at(row / t.d, row % t.d, r));
+        let dec = svd(&mm);
+        let total: f64 = dec.s.iter().map(|s| s * s).sum();
+        let norm = total.sqrt().max(1e-300);
+        dec.s
+            .iter()
+            .map(|s| {
+                let p = (s / norm) * (s / norm);
+                if p > 1e-300 {
+                    -p * p.log2()
+                } else {
+                    0.0
+                }
+            })
+            .sum::<f64>()
+            .max(0.0)
+    }
+
     /// Von Neumann entanglement entropy in **bits** across every bond.
     pub fn bond_entropies_bits(&mut self) -> Vec<f64> {
         self.schmidt_spectra()
@@ -956,6 +983,28 @@ mod tests {
         for &t in &[0usize, 2, 1, 0, 2] {
             m.move_center_to(t);
             assert!((m.to_dense().fidelity(&s) - 1.0).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn single_bond_entropy_matches_full_sweep() {
+        let dims = [2, 3, 4, 3, 2];
+        let mut rng = Rng::new(88);
+        let s = random_dense(&dims, &mut rng);
+        let full = {
+            let mut m = Mps::from_dense(&s, TruncSpec::exact());
+            m.bond_entropies_bits()
+        };
+        for bond in 0..dims.len() - 1 {
+            let mut m = Mps::from_dense(&s, TruncSpec::exact());
+            let one = m.bond_entropy_bits_at(bond);
+            assert!(
+                (one - full[bond]).abs() < 1e-9,
+                "bond {}: {} vs {}",
+                bond,
+                one,
+                full[bond]
+            );
         }
     }
 

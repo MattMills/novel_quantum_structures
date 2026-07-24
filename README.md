@@ -3,6 +3,13 @@
 **Twisted zigzag qudit chains: a zero-dependency Rust laboratory for
 heterogeneous-dimension quantum structures.**
 
+> **[THEORY.md](THEORY.md)** derives the mathematics behind every finding
+> below — definitions, propositions, and proofs, each tied to the module
+> that implements it and the example that measures it.
+> **[COMPLEXITY.md](COMPLEXITY.md)** measures the work and output of every
+> object and sorts them into complexity classes by how their bond
+> dimension grows.
+
 This library explores a question: what happens if a qudit chain's local
 dimension *expands and collapses* along the chain — qubit → qutrit → 4-dit →
 5-dit → back down — with **cross-scale couplings** that pair sites across the
@@ -49,6 +56,29 @@ field that heals gcd obstructions, the double-zero seam is an attractor
 that repairs the number representation with an exact `1/(k²+1)` law, and a
 rank-one damper makes the repair exponential at a rate you choose
 (finding 19 below).
+
+Three further instruments close the loop between the theory document and
+the laboratory: the **width atlas** computes operator widths from pure
+number theory before any tensor exists (finding 20), **boundary twists**
+re-wire a machine's message loop so one body computes mod `N−1`, `N`, or
+`N+1` (finding 21), and the **frame flow** takes fractional powers of the
+QFT itself out of its own operator algebra, `F⁴ = I` (finding 22).
+Controlled cascades then run the **full Shor kernel** — controlled
+modular exponentiation, phase estimation on one reused valley qubit,
+order recovery by continued fractions — priced bond-for-bond in advance
+(finding 23).
+
+And the first steps past a single chain: **crossing strands** and
+**networks**. Two dimension waves `[1,2,3,4,5,4,3,2,1]` laid antiparallel
+into an X, coupled where their dimensions match — and *which* level (5, 4,
+3, 2, 1) carries the coupling selects the entanglement geometry: the
+shoulder injects more than the peak, the pinch nothing, and the cost is a
+choice of site ordering, not a property of the physics (finding 24). Push
+to many strands and arbitrary coupling graphs and one law organizes all of
+it — the cost is the graph's **cutwidth**: one crossing direction is flat
+(bundles, multi-period crossings stay `χ = hi` however many strands or
+crossing points), a second is an area law (a woven lattice is
+`χ = d^min(rows,cols)`) — the MPS/PEPS boundary, measured (finding 25).
 
 ```text
   5           ●                 ●
@@ -97,11 +127,14 @@ renormalization:
 | `gates` | qudit gates incl. heterogeneous couplers: `cshift`, `cphase`, and `xswap` (subspace exchange — the bidirectional-pair gate) |
 | `embed` | hosted-qubit registers: gate lifting, compilation of qubit circuits onto qudit chains, exact extraction, `qubit_bit_swap` shuttling |
 | `zigzag` | diamond/wave profiles, mirror pairs, valleys & waists, named circuit families (`bowtie`, `crosswave_round`, `brickwork_random`) |
-| `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
+| `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics; `select_on` — control-selection `Σ_a \|a⟩⟨a\| ∘ U^a`, making controlled blocks (the `C-U^{2^j}` of phase estimation) first-class |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
-| `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
+| `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total); `FrameFlow` — fractional powers of the **QFT itself** as the four-term projector combination `F^t = Σ c_m(t)·F^m` (`F⁴ = I`), no eigensolver needed |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
-| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`) and **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`, completing the ring family `N−1 / N / N+1`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs |
+| `crossing` | **crossing dimension-wave strands**: two waves sharing one MPS, crossed pairwise into an X (`antiparallel`) or ladder (`parallel`) and coupled at a chosen dimension level; `Layout::{Block, Interleaved}` — the A|B entanglement is one bond in Block, a `≤ hi` near-product in Interleaved (a ~1000× cost knob for the same state) |
+| `network` | **networks of crossing strands**: `K` strands and any coupling graph, with the law that MPS cost = `d^cutwidth`; `bundle` (one direction, `χ = hi` for any `K`), `overlay` (two directions on a pair, `(hi−1)²`), `weave`/`wave_weave` (a 2D lattice — area law `d^min(rows,cols)`); GHZ and cluster graph-state couplers |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -287,6 +320,229 @@ makes stabilization exponential — 1001 iterations at γ = 1 collapse to
 the boundary, not inside the operator. (`stabilize`,
 `self_stabilizing_boundaries`)
 
+**20. The width of a multiplication operator is computable before the
+operator exists — and resonance survives at trillion scale.** The
+cut-rank theorem (THEORY.md §8) reduces the operator Schmidt rank of `×k`
+across any cut to counting `|{⌊kb/S⌋ mod L}|` — executable number theory,
+no tensors (`width`). The full atlas of `Z_2880`: 668 of the 768
+invertible multipliers (87%) saturate the waist cap 24; 100 are resonant,
+down to width 2 (`×1441`, `×2879 = −1`) and width 3 (`×961`, `×1439`,
+`×1921`). Predictions match exactly-recompressed cascade MPOs
+bond-for-bond — `×7`, `×49 = ×7∘×7`, `×2401 = ×49∘×49` on diamond(2,4),
+and all 24 bonds of `×7` on the wave. The sharpened minimal-machine
+statement: **584 of 768 multipliers have intrinsic width below every
+single-front machine alphabet** `min(k, k⁻¹, N−k, (N−k)⁻¹)` by a factor
+> 8 (extreme: `×1441`, width 2 vs best alphabet 1439 — a 719× gap), so
+their narrow presentations are reachable only through composition +
+recompression: no single sweep of the chain carries so little. At scale,
+the squaring orbit of 7 mod `8.6·10¹²` has central-cut widths
+`7 → 49 → 2401 → 2 073 600 (cap) → 1 077 111 → 1 928 737` — the cost
+curve of modular exponentiation stays number-theoretically resonant on a
+trillion-element ring, and it is computed a priori. (`width`,
+`width_atlas`)
+
+**21. Twisting the loop selects a third ring: one machine computes mod
+N−1, N, and N+1.** Feeding the exiting message back through the
+*reversal* permutation (`to_mpo_looped_twisted`) turns the carry machines
+into **diminished-one arithmetic mod `N+1`** — the encoding of
+Fermat-number-transform hardware: chain value `x` represents `v = x+1`,
+the twisted `+c` maps `v → v+(c+1) mod N+1`, the twisted `×k` maps
+`v → k·v mod N+1` exactly, and the unrepresentable zero of `Z_{N+1}` is
+an *annihilated branch* — a **hole**, the dual of the straight loop's
+double-zero **seam** (the same input `x = N−1−c` hits both defects). On
+`[2,3,4,3]` (`N = 72`, flanked by the twin primes 71 and 73) both closed
+rings are fields: `×6` (defect 0.833 open) is healed by either closure
+(defect ≤ 10⁻¹⁶). The twist can also *break*: `×5` is unitary on `Z_24`
+but defective on the twist ring `25 = 5²` (defect 0.833, four annihilated
+holes), and the diamond's twist ring `2881 = 43·67` shows the
+factorization branch-by-branch (`|0⟩` and `|67⟩` collide on `|42⟩`;
+`v = 67` annihilates). The twisted traced identity is the unilateral
+shift `Σ|x+1⟩⟨x|` — a *drain* into the missing zero obeying the exact law
+`‖M^k·uniform‖² = (N−k)/N` — where the straight trace was a pump.
+Primality of `N∓1` is the design criterion, selectable by profile.
+(`cascade::Transducer::to_mpo_looped_twisted`, `boundary_twists`)
+
+**22. The QFT is itself a flow, spanned by four operators.** `F⁴ = I` on
+any ring, so the QFT's spectral projectors are polynomials in `F` and the
+fractional Fourier transform is the exact four-term combination
+`F^t = c₀(t)·I + c₁(t)·F + c₂(t)·Π + c₃(t)·F†` (`Π` = the ring
+reflection `x → −x`, a width-2 machine) — assembled by operator linear
+algebra, no eigensolver (`flow::FrameFlow`). Measured on diamond(2,4): an
+exact one-parameter group of period 4 (`F^½ ∘ F^½ = F`,
+`F^0.7 ∘ F^1.3 = Π`, `F^3.5 ∘ F^0.5 = I`, each at fidelity
+1.000000000), unitary at every `t`. The frame-quantization signature
+refines finding 12: operator entanglement is *pinned* to the pure-power
+value at every integer (extrema 0 / 5.170 / 1.000 / 5.170 bits), but bond
+dimension collapses only at `t ≡ 0, 2 (mod 4)` (χ = 1, 2 against the
+flat cap 36 elsewhere) — `F` itself saturates the geometry, so **width
+sees the frame exactly where the frame is narrower than the geometry**.
+Participation of `F^t|x₀⟩` breathes with period 2: localized at even `t`,
+maximally flat (1/N) at odd `t`. (`flow::FrameFlow`,
+`fractional_fourier`)
+
+**23. The Shor kernel runs end-to-end — controlled, priced, and
+bond-free where it counts.** `Transducer::mult_skipping` (the carry front
+tunnels through a control site, leaving `I ⊗ ×k` at bond 1 across it) and
+`Mpo::select_on` (projector-branch composition) make controlled modular
+arithmetic first-class. The exact cost obeys the **controlled-width
+formula** `χ = w + [k ≢ 1 mod S]` (THEORY.md Prop 8.11) — and the deep
+QPE powers are resonant on every cut, so **their control is free**: the
+`C-U^{2^j}` family for 7 mod 1440 on the diamond measures
+`[2,4,8,8,6,2] / [2,4,13,24,6,2] / [2,3,3,3,3,2] / [2,3,3,3,3,2]`, every
+bond as predicted, with `961 = 7⁴` and `481 = 7⁸` satisfying
+`k ≡ 1 (mod S)` at every cut. Phase kickback is **bond-free**: on an
+eigenstate the control cut stays at `χ = 1` while the phase lands
+(30°/60°/120°/240° measured exactly); a non-eigenstate register costs
+`χ = 2` — the resource statement of phase estimation, read off a bond
+dimension. Semiclassical Kitaev phase estimation — the single valley
+qubit at site 0 reused for all 10 bits, measurement by projection,
+feedback rotations conditioned on earlier bits — plus continued fractions
+bounded by the Carmichael exponent `λ(1440) = 24` recovers
+**`ord(7 mod 1440) = 12`** from six runs (measured fractions
+`1/3, 5/12, 1/4, 1/3, 2/3, 5/6`; the register is never measured — each
+run collapses onto an eigenstate through control backaction alone). Both
+Shor registers live on one dimension wave — control in the valleys,
+arithmetic in the interior — and the whole protocol runs in a fifth of a
+second. (`cascade::Transducer::mult_skipping`, `mpo::Mpo::select_on`,
+`shor_kernel`)
+
+**24. Two crossing waves entangle by shape, and their cost is a layout
+choice.** Two strands `[1,2,3,4,5,4,3,2,1]` laid antiparallel into an X
+(`A[i] ~ B[n−1−i]`) share one MPS and couple where their dimensions match.
+Bell-coupling the pairs at a level set injects exactly `Σ log2 d` bits
+across the A|B bipartition (Schmidt rank `Π d`) — verified against the
+closed form and dense simulation for every level. The content is in the
+*multiplicity*: a peak's waist (`d=5`) is **unique** but every lower level
+is **paired**, so the most inter-strand entanglement enters at the
+**shoulder** (`d=4`, two pairs, `4.00` bits) — not the peak (`d=5`, one
+pair, `2.32` bits); the `d=1` pinch is a **decoupled crossing**
+(`cshift(1,1) = I`). Cycles add: coupling at 5 then 4 then 3 then 2
+accumulates `2.32+4.00+3.17+2.00 = 11.49` bits, the full budget one level
+per cycle. A **valley** dual reflects the multiplicities (paired wide
+ends, unique pinch), crossing richest at its rims. And the profiling
+headline: the same crossing is `χ = Π d` (144, ~70 ms) in **Block** layout
+but `χ ≤ hi` (4, ~30 µs — a **~1000× gap**) in **Interleaved** layout,
+because a Bell crossing is a product of *local* pairs; a 50-site twin wave
+fully crossed holds `34.5` bits of inter-strand entanglement in 8 KB at
+`χ = 5`. The entanglement is physics; whether it is *expensive* is a
+choice of site order — interleave to compute, read it off the block bond
+(`Mps::bond_entropy_bits_at`, an `O(χ³)` local diagnostic).
+(`crossing`, `crossing_vees`)
+
+**25. Crossing networks: the cost is the coupling graph's cutwidth, and
+the cutwidth is the dimensionality of the crossing.** Generalizing the X to
+`K` strands and any coupling graph, the MPS bond dimension is exactly
+`d^(edges crossing the worst cut)`, minimized over site orderings by the
+graph's **cutwidth** (proved for graph-state couplers, dense-validated).
+Reading that one integer sorts every richer geometry: a **bundle** of `K`
+strands coupled in one direction (a GHZ rung per site) is cutwidth 1 —
+`χ = hi` for `K = 2, 3, 5, 8`, *any* `K`; two multi-period `wave(1,5,p)`
+strands cross at `p` peak-regions, and the inter-strand entanglement climbs
+(`11.49 → 45.97` bits for `p = 1…4`) while `χ` stays pinned at `hi = 5`
+(**many crossing points, one direction, still cheap**). **Overlaying** a
+second direction on the same pair (X + ladder) unions two matchings into
+4-cycles — cutwidth 2, `χ = (hi−1)²` (`4, 9, 16` for `hi = 3, 4, 5`; the
+*shoulder* squared, since the unique peak carries only the ladder). A
+**weave** — strands in two transverse directions, a 2D lattice — is
+cutwidth `min(rows,cols)`, so `χ = d^rows` (`4, 8, 16, 32` for `rows = 2…5`,
+*flat* in the length): an **area law**, the boundary where the 1D tensor
+network stops being efficient (the MPS/PEPS line), and a **wave weave**
+inherits it with a wave-shaped bond profile `[1,1,2,4,6,4,2,1,1]`. One
+direction of crossing — however many strands or crossing points — is
+constant cutwidth and classically cheap; a second transverse direction is
+exponential. That threshold, not the strand count, governs simulability.
+(`network`, `crossing_networks`)
+
+**26. Crossing the renormalization wave: the coupling acquires a scale.**
+The zigzag *wave* (many V's) is a real-space renormalization structure —
+valleys fine, waists coarse, `merge_sites` a coarse-graining step,
+structured dynamics riding the scale hierarchy (findings 5–7). Applying the
+crossing to *these* strands, the crossing inherits the hierarchy, three
+measured ways. **A crossing has a scale**: coupling two `wave(1,5,2)`
+strands at the coarse waists is few crossings of *fat* modes (2 crossings,
+5 modes), at the fine valleys many of *thin* modes (4 crossings, 2 modes).
+**A woven lattice of waves carries an RG-shaped area law**: the bond profile
+of a wave weave *is* the wave — `[1,1,2,4,6,4,2,1,1,1,2,4,6,4,2,1,1]`, two
+humps at the two waists pinched to 1 at the valleys — thickening with each
+row (`6 → 12` at 2 → 3 rows) and *periodic* (a second period doesn't raise
+the peak; the cost is local to each RG cell). **A crossing is
+RG-covariant**: coarse-graining a crossed strand toward its waist (an exact
+`merge_sites`) carries the coupling up onto the coarse `d = 36` block and
+splits back at fidelity `1.000000000000` — scale morphing and crossing
+commute. The wave supplies a scale ladder, the crossing supplies coupling,
+and everything expands into a complex multi-scale shape still costed by one
+number — the cutwidth, now modulated by the renormalization structure.
+(`crossing`, `network`, `renormalizing_crossings`)
+
+**27. Retrodictive-prediction: a wide operation solved as a
+meet-in-the-middle crossing, ordered by the tail-radix web.** The
+antiparallel crossing couples opposite time directions — a *forward*
+cascade (`×a`, **prediction**, sweeps LSB→MSB) crossed with a *backward*
+cascade (`÷b`, **retrodiction**, sweeps MSB→LSB) — and by the
+minimal-machine principle (finding 18) their composite
+`÷b ∘ ×a = ×(a·b⁻¹ mod N)` computes an operation whose single-front machine
+is enormous, at the width of the two narrow fronts. Measured on `Z_2880`:
+`×2357 = ×7 ⋈ ÷11` at **width 17**, `×2659 = ×7 ⋈ ÷13` at 19,
+`×2095 = ×5 ⋈ ÷11` at 15 — each verified, and each *unbuildable* as a
+single forward cascade (`m > 512`, the direct cap), so the crossing is the
+only feasible route. The **tail-radix phase web** (finding 8) is where the
+fronts meet: it conjugates a forward multiplier into a backward one
+(`V M_k V† = M_{k⁻¹}`, hs fidelity 1.0 — prediction and retrodiction are
+frame-conjugate), and it diagonalizes the additive family, so a mesh of
+additive solve-components **commutes in the frame** and its ideal ordering
+is trivial — one frame round-trip instead of five (~4 ms → ~0.7 ms,
+agreeing exactly), with the costly digit-reversal cancelling
+meet-in-the-middle (`χ 6` vs `36`). A full affine map
+`x → 2357·x + 500 mod 2880`, whose single-front multiplier is unbuildable,
+solves as a **width-17 mesh** — forward prediction × backward retrodiction
+for the multiplicative part, an additive component summed in the frame, the
+whole ordered by the ring's own banded Fourier web and read at the meeting
+point. (`cascade`, `radix`, `meet_in_the_middle`)
+
+**28. Bond dimension is a two-sided resource — representation efficiency
+buys bounded circuit-resource efficiency.** Bond dimension `χ` is the
+classical-simulation cost, and read the other way its `log₂ χ` bits of
+operator entanglement across a cut lower-bound the entangling gates any
+circuit must send across it. So `χ` prices *simulation* and *implementation*
+at once, and the crossing/meet-in-the-middle/tail-radix geometry minimizes
+both together. Measured circuit-resource gains, honestly bounded:
+**ancilla** — a single-front `×2357` carries `log₂(2357) = 12` qubits to
+implement an operator of only `3.9` bits of operator entanglement, `3×` more
+than it contains; the crossing `×7 ⋈ ÷11` achieves the intrinsic width at
+`4` qubits. **Gate count** — the tail-radix (reversal-free) ordering drops
+the digit-reversal swap network, and additive components *batch* in the
+Fourier frame (Draper's arithmetic on the mixed-radix wave): `K` additions
+in one frame round-trip, a measured `3.1× / 4.7× / 6.3× / 7.7×` for
+`K = 4 / 8 / 16 / 32`, approaching `~10×` (Fourier arithmetic in the Draper
+lineage, here native to the heterogeneous wave and composable with the
+crossing). One meter, two resources, one geometry that drives them down
+together — a design principle: build the operation as the crossing that
+minimizes `χ`, and you have minimized both the cost to simulate it and the
+width to implement it, at the same time. (`cascade`, `radix`,
+`resource_efficiency`)
+
+**29. The operative window: how much computation folded into one operator,
+and what it costs.** Finding 28 priced `χ` across *space*; this is the dual
+across *time* — the **operative window** `W` is the temporal aperture, how
+many gates/circuits/steps are folded into one operator and applied at once,
+and its cost is again operator entanglement (the past↔future pipeline the
+whole span must sustain). Two sharp regimes, measured: an **arithmetic
+window is unbounded** — `K` adders fold to `χ = 2` *flat* for `K = 1…16`,
+`×7^K` stays at the resonant width 3 — a reversible computation of any depth
+lives in one narrow operator; a **generic quantum window is capped** — a
+depth-`D` Haar circuit's operator entanglement climbs `2.83 → 4.48 → 5.13`
+bits and pins `χ = 36` by `D ≈ 2`, its *capacity* scaling with the geometry
+(`diamond(2,3)` holds ≈3 layers, `diamond(2,4)` ≈5, a wider wave more).
+Both regimes are design levers: fold an arbitrarily deep reversible
+sub-computation into one narrow operator you hold, compose, and fire in a
+single shot, and let the wave's width set how much quantum depth rides
+alongside. The payoff of *operating on the whole window at once*: a 35-gate
+window folded into one operator applies **~20× faster** than replaying its
+gates, amortizing over every reuse. `χ` prices the window in time exactly as
+it prices the operator in space — the operative window is a two-dimensional
+resource (aperture `W` × width `χ`), and the architecture's move is to keep
+large apertures at small width. (`mpo`, `operative_window`)
+
 ## Quick start
 
 ```rust
@@ -327,7 +583,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 88 tests, dense-vs-MPS cross-validation
+cargo test                                   # 125 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -337,6 +593,17 @@ cargo run --release --example operator_width_cursor
 cargo run --release --example stepwise_cascade
 cargo run --release --example opposed_fronts
 cargo run --release --example self_stabilizing_boundaries
+cargo run --release --example width_atlas
+cargo run --release --example boundary_twists
+cargo run --release --example fractional_fourier
+cargo run --release --example shor_kernel
+cargo run --release --example crossing_vees
+cargo run --release --example crossing_networks
+cargo run --release --example renormalizing_crossings
+cargo run --release --example complexity_census
+cargo run --release --example meet_in_the_middle
+cargo run --release --example resource_efficiency
+cargo run --release --example operative_window
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -344,7 +611,7 @@ No dependencies; builds with any reasonably recent stable Rust.
 ## Design notes
 
 * **Verification-first.** Every mechanism is cross-checked against the exact
-  dense simulator on small chains (49 tests), including randomized circuits
+  dense simulator on small chains (125 tests), including randomized circuits
   over both orientations of long-range gates, canonical-form invariance, and
   analytic entropy values.
 * **In-crate numerics.** The SVD is a one-sided Jacobi with two
@@ -371,11 +638,12 @@ No dependencies; builds with any reasonably recent stable Rust.
   boundary measured in `long_wave` invites a systematic study: Clifford-like
   qudit circuits, cross-scale couplings only, dimension-commensurate gates
   (`gcd`-respecting `cshift`/`cphase` webs)…
-* **Fourier-space arithmetic beyond addition.** The adder pipeline
-  (finding 9) begs for multiplication: `x → k·x mod N` as a composed block,
-  and from there modular exponentiation — the Shor kernel — as a circuit of
-  circuits over the zigzag's ring, with operator entanglement as the cost
-  meter.
+* **The Shor kernel at scale.** Multiplication, recursive exponentiation,
+  controlled powers, and order finding all run (findings 15, 20, 23). Next:
+  coherent readout — a full QFT over a *hosted control register* (the
+  wave's valley qubits, finding 3) instead of the semiclassical single
+  qubit — and order finding on the 25-site wave, where the atlas already
+  prices the `C-U` family over `Z_{8.6·10¹²}`.
 * **`xswap` as a disentangler.** For mirror-symmetric correlations the
   subspace exchange can relocate entanglement toward the waist before
   truncation — a MERA-style disentangler adapted to the wave. The
@@ -399,5 +667,11 @@ No dependencies; builds with any reasonably recent stable Rust.
 * **Dynamic profiles.** `promote`/`demote`/`merge`/`split` allow the wave
   itself to evolve during a computation — an adaptive-geometry simulator
   where the dimension profile tracks where entanglement wants to live.
-* **Beyond chains.** Mirror pairs hint at a ladder; the natural next
-  structure is a tree or bowtie *network* of dimension waves.
+* **Beyond chains.** The first step is taken — `crossing` puts two waves on
+  one MPS as an X (finding 24), and shows the layout, not the entanglement,
+  is the cost. The next structures are genuine *networks*: a ladder
+  (parallel crossing), then trees and necklaces of waves, where no single
+  interleaving localizes every coupler and choosing the site order becomes
+  a combinatorial layout-optimization problem (the crossing pattern's
+  tree-width). Do lattices of crossed waves obey an area law, and can
+  `xswap` relocate inter-strand entanglement toward chosen cuts?

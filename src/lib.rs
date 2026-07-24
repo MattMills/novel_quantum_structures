@@ -54,6 +54,10 @@
 //!   ([`mpo::Mpo::compose_after`]) and apply ([`mpo::Mpo::apply_to`]) as
 //!   first-class objects, and their bond spectra measure operator
 //!   entanglement — the width of the past↔future correlation pipeline.
+//!   Control-selection ([`mpo::Mpo::select_on`]) makes controlled blocks
+//!   first-class — with [`cascade::Transducer::mult_skipping`] it builds
+//!   the `C-U^{2^j}` of phase estimation, and the full Shor kernel runs
+//!   end-to-end (`examples/shor_kernel.rs`).
 //! * [`radix`] — the **structured tail-radix phase web**: the mixed-radix
 //!   Fourier transform over the chain's ring `Z_N`, whose output digit `j`
 //!   couples only to input digits `i ≥ j` with angle `2π/(d_j···d_i)`;
@@ -78,16 +82,40 @@
 //!   a pipeline of flow segments at adaptive temporal resolution — refine
 //!   at the focus, coarsen behind it, total composition invariant. Bond
 //!   dimension along the flow *measures* operation width: it collapses at
-//!   integer shifts and widens at fractional ones.
+//!   integer shifts and widens at fractional ones. [`flow::FrameFlow`]
+//!   extends the idea to the Fourier frame itself: `F⁴ = I` makes the
+//!   fractional QFT `F^t` a four-term combination of `I`, `F`, the ring
+//!   reflection, and `F†` — no eigensolver needed.
+//! * [`width`] — the **a-priori width calculus**: the cut-rank theorem
+//!   `χ_cut(×k) = |{⌊k·b/S⌋ mod L}|` as executable number theory, so the
+//!   bond profile of modular multiplication is computed *before* any
+//!   tensor is built — and pinned against recompressed cascade MPOs by
+//!   the tests.
 //! * [`stabilize`] — **self-stabilizing boundary systems**: close a cascade's
 //!   message loop ([`cascade::Transducer::to_mpo_looped`]) and it becomes a
 //!   non-unitary dynamical system with a designed attractor. The traced
 //!   adder is ones'-complement (mod `N-1`), turning the diamond's composite
 //!   ring into a prime field that *heals* gcd obstructions; the double-zero
 //!   seam is a Jordan block whose iteration self-stabilizes the number
-//!   representation, at a convergence rate a rank-one damper sets. Operator
+//!   representation, at a convergence rate a rank-one damper sets.
+//!   *Twisting* the loop by the message reversal
+//!   ([`cascade::Transducer::to_mpo_looped_twisted`]) selects the third
+//!   ring of the family — diminished-one arithmetic mod `N+1`, with the
+//!   missing zero as an annihilating hole dual to the seam. Operator
 //!   linear combinations ([`mpo::Mpo::add`], [`mpo::Mpo::scale`],
 //!   [`mpo::Mpo::basis_transfer`]) make these boundary systems first-class.
+//! * [`crossing`] — **crossing dimension-wave strands**: two waves sharing
+//!   one MPS, crossed pairwise into an X and coupled at a chosen dimension
+//!   level. The inter-strand entanglement is a single bond, and its budget
+//!   `Σ log2 d` over the active pairs exposes a multiplicity-vs-dimension
+//!   tradeoff — the shoulder `d = hi−1` (paired) injects more than the
+//!   unique peak, and the `d = 1` pinch is a decoupled crossing.
+//! * [`network`] — **networks of crossing strands**: many strands coupled
+//!   by an arbitrary graph, with the law that the MPS cost is the graph's
+//!   *cutwidth*. A one-directional bundle of `K` strands stays at `χ = hi`
+//!   for any `K`; overlaying a second crossing direction adds one to the
+//!   cutwidth (`(hi−1)²`); a two-axis *weave* is an area law
+//!   (`χ = d^min(rows,cols)`) — the MPS/PEPS boundary made explicit.
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -114,6 +142,7 @@
 pub mod c64;
 pub mod cascade;
 pub mod circuit;
+pub mod crossing;
 pub mod dense;
 pub mod embed;
 pub mod flow;
@@ -121,8 +150,10 @@ pub mod gates;
 pub mod mat;
 pub mod mpo;
 pub mod mps;
+pub mod network;
 pub mod radix;
 pub mod stabilize;
+pub mod width;
 pub mod zigzag;
 
 pub use c64::C64;

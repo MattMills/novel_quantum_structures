@@ -38,6 +38,7 @@ use crate::mat::{Mat, TruncSpec};
 use crate::mps::{Mps, SiteTensor};
 
 /// A matrix product operator over a heterogeneous qudit chain.
+#[derive(Clone)]
 pub struct Mpo {
     /// Physical dimensions of the chain the operator acts on.
     pub dims: Vec<usize>,
@@ -289,6 +290,43 @@ impl Mpo {
         }
     }
 
+    /// The control-select operator `Σ_a |a⟩⟨a|_ctrl ∘ branches[a]`: acts
+    /// as `branches[a]` on states whose `ctrl` site holds digit `a`.
+    /// `branches.len()` must equal `dims[ctrl]`, and each branch should
+    /// act as the identity on the control site (whatever it does there is
+    /// composed with the projector). For a qubit control and branches
+    /// `[I, U]` this is the controlled-`U`; with a qudit control and
+    /// branches `[I, U, U², …]` it is the controlled power
+    /// `|a⟩|x⟩ → |a⟩ U^a|x⟩` — the kernel of phase estimation. Combined
+    /// with [`crate::cascade::Transducer::mult_skipping`] it makes
+    /// controlled modular arithmetic first-class (see
+    /// `examples/shor_kernel.rs`).
+    pub fn select_on(ctrl: usize, branches: &[Mpo], trunc: TruncSpec) -> Mpo {
+        assert!(!branches.is_empty());
+        let dims = branches[0].dims.clone();
+        assert!(ctrl < dims.len());
+        let d = dims[ctrl];
+        assert_eq!(branches.len(), d, "one branch per control level");
+        let mut acc: Option<Mpo> = None;
+        for (a, branch) in branches.iter().enumerate() {
+            assert_eq!(branch.dims, dims, "branch chain mismatch");
+            let proj = Mat::from_fn(d, d, |r, c| {
+                if r == a && c == a {
+                    C64::ONE
+                } else {
+                    C64::ZERO
+                }
+            });
+            let mut term = branch.clone();
+            term.absorb_after(&Op::One(ctrl, proj));
+            acc = Some(match acc {
+                None => term,
+                Some(s) => s.add(&term, trunc),
+            });
+        }
+        acc.expect("at least one branch")
+    }
+
     /// Hermitian adjoint.
     pub fn adjoint(&self) -> Mpo {
         let mut carrier = self.carrier.clone();
@@ -442,6 +480,86 @@ mod tests {
             "U†U != I: hs fidelity {}",
             id.hs_fidelity(&reference)
         );
+    }
+
+    #[test]
+    fn select_on_is_controlled_power() {
+        // Qutrit control at site 0 over the sub-ring Z_15 (sites 1, 2):
+        // |a, x⟩ → |a, 2^a·x mod 15⟩ with branches [I, ×2, ×4].
+        use crate::cascade::Transducer;
+        let dims = vec![3usize, 3, 5];
+        let spec = TruncSpec::exact();
+        let id = Mpo::identity(&dims, spec);
+        let m2 = Transducer::mult_skipping(&dims, 0, 2).to_mpo(spec);
+        let m4 = m2.compose_after(&m2, spec);
+        let cm = Mpo::select_on(0, &[id, m2, m4], spec);
+        for a in 0..3usize {
+            for x in 0..15usize {
+                let digits_of = |mut v: usize| -> Vec<usize> {
+                    let mut d = vec![0usize; dims.len()];
+                    for (i, &dim) in dims.iter().enumerate().rev() {
+                        d[i] = v % dim;
+                        v /= dim;
+                    }
+                    d
+                };
+                let input = Mps::basis_state(&dims, &digits_of(a * 15 + x), spec);
+                let target =
+                    Mps::basis_state(&dims, &digits_of(a * 15 + (1 << a) * x % 15), spec);
+                let f = cm.apply_to(&input).fidelity(&target);
+                assert!((f - 1.0).abs() < 1e-9, "a={} x={}: {}", a, x, f);
+            }
+        }
+    }
+
+    #[test]
+    fn phase_kickback_is_bond_free() {
+        // Control |+⟩, register in an eigenstate of ×7 on Z_12
+        // (7² ≡ 1, orbit {1, 7}): |u⟩ = (|1⟩ − |7⟩)/√2 has U|u⟩ = −|u⟩,
+        // so C-U sends |+⟩⊗|u⟩ to |−⟩⊗|u⟩ — a product state. The phase
+        // lands on the control without a single unit of bond dimension
+        // crossing the control cut.
+        use crate::cascade::Transducer;
+        use crate::gates;
+        let dims = vec![2usize, 3, 4];
+        let spec = TruncSpec::exact();
+        let id = Mpo::identity(&dims, spec);
+        let m7 = Transducer::mult_skipping(&dims, 0, 7).to_mpo(spec);
+        let cm = Mpo::select_on(0, &[id, m7], spec);
+
+        let sqrt_half = C64::real(1.0 / 2.0_f64.sqrt());
+        let mut u = DenseState::zero_state(&dims);
+        u.amps[0] = C64::ZERO;
+        u.amps[1] = sqrt_half;
+        u.amps[7] = C64::ZERO - sqrt_half;
+        let mut plus_u = u.clone();
+        plus_u.apply1(0, &gates::hadamard()); // |+⟩ ⊗ |u⟩
+        let mut minus_u = plus_u.clone();
+        minus_u.apply1(0, &gates::phase_diag(&[0.0, std::f64::consts::PI])); // |−⟩ ⊗ |u⟩
+
+        let out = cm.apply_to(&Mps::from_dense(&plus_u, spec));
+        let f = out.to_dense().fidelity(&minus_u);
+        assert!((f - 1.0).abs() < 1e-9, "kickback fidelity {}", f);
+        assert_eq!(out.bond_dims()[0], 1, "control bond must stay trivial");
+    }
+
+    #[test]
+    fn controlled_width_formula() {
+        // Across an interior cut with register split (L | S), the
+        // controlled multiplier has width w + 1 when k ≢ 1 (mod S) and
+        // exactly w when k ≡ 1 (mod S) — the control is free on resonant
+        // powers. On [2,3,4] (sub-ring Z_12, cut (3|4), w = 3 for both):
+        // ×7 (7 mod 4 = 3): bonds [2, 4]; ×5 (5 mod 4 = 1): bonds [2, 3].
+        use crate::cascade::Transducer;
+        let dims = vec![2usize, 3, 4];
+        let spec = TruncSpec::exact();
+        for (k, expect) in [(7usize, vec![2, 4]), (5, vec![2, 3])] {
+            let id = Mpo::identity(&dims, spec);
+            let m = Transducer::mult_skipping(&dims, 0, k).to_mpo(spec);
+            assert_eq!(m.bond_dims(), vec![1, 3], "k={}", k);
+            let cm = Mpo::select_on(0, &[id, m], spec);
+            assert_eq!(cm.bond_dims(), expect, "k={}", k);
+        }
     }
 
     #[test]

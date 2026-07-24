@@ -152,6 +152,49 @@ impl Transducer {
         }
     }
 
+    /// [`Transducer::mult`] acting on the sub-ring of every site **except**
+    /// `skip`, which passes both its digit and the message through
+    /// unchanged. The lifted operator is exactly
+    /// `I_{d_skip} ⊗ (×k mod N/d_skip)` — a pure tensor product across the
+    /// skipped site (the message front tunnels through it), so exact
+    /// recompression finds bond dimension 1 there. This is the raw
+    /// material for **controlled arithmetic**: compose with a projector at
+    /// `skip` via [`crate::mpo::Mpo::select_on`] to make the
+    /// multiplication conditional on a control digit — the `C-U^{2^j}` of
+    /// the Shor kernel (see `examples/shor_kernel.rs`).
+    pub fn mult_skipping(profile: &[usize], skip: usize, k: usize) -> Transducer {
+        assert!(skip < profile.len());
+        assert!(k >= 1, "k must be positive");
+        assert!(
+            k <= 512,
+            "direct construction is for modest k; compose cascades for larger multipliers"
+        );
+        let rules = profile
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| {
+                let mut r = vec![(0usize, 0usize); k * d];
+                for msg_in in 0..k {
+                    for p_in in 0..d {
+                        r[msg_in * d + p_in] = if i == skip {
+                            (msg_in, p_in)
+                        } else {
+                            let v = k * p_in + msg_in;
+                            (v / d, v % d)
+                        };
+                    }
+                }
+                r
+            })
+            .collect();
+        Transducer {
+            profile: profile.to_vec(),
+            msg_dim: k,
+            rules,
+            direction: Direction::RightToLeft,
+        }
+    }
+
     /// Modular **division**: the geometrically opposed machine to
     /// [`Transducer::mult`], computing the same inverse operation with a
     /// dual state set running the other way.
@@ -219,9 +262,50 @@ impl Transducer {
     /// `I + |0⟩⟨N-1|`, whose iteration self-stabilizes the double-zero
     /// (see [`crate::stabilize`]).
     pub fn to_mpo_looped(&self, trunc: TruncSpec) -> Mpo {
+        let id: Vec<usize> = (0..self.msg_dim).collect();
+        self.to_mpo_looped_twisted(&id, trunc)
+    }
+
+    /// The looped boundary **twisted** by a message permutation `σ`: the
+    /// exiting message is fed back into the entry *through* `σ`,
+    /// `M = Σ_m ⟨σ(m)| machine |m⟩` ([`Transducer::to_mpo_looped`] is the
+    /// identity twist).
+    ///
+    /// The twist selects the ring a second time. Two clean cases (both
+    /// proved in THEORY.md and pinned by the tests):
+    ///
+    /// * **σ = identity** — end-around carry: arithmetic mod `N−1`, with a
+    ///   *double zero* (`0` and `N−1` both represent it).
+    /// * **σ = reversal** (`m ↦ M−1−m`) — **diminished-one arithmetic
+    ///   mod `N+1`**, the encoding of Fermat-number-transform hardware:
+    ///   chain value `x` represents `v = x+1 ∈ [1, N] ⊂ Z_{N+1}`. The
+    ///   twisted adder `+c` realizes `v → v + (c+1) mod N+1` and the
+    ///   twisted multiplier `×k` realizes `v → k·v mod N+1` exactly. The
+    ///   unrepresentable zero of `Z_{N+1}` appears as an **annihilated
+    ///   branch** — a hole, the precise dual of the straight loop's double
+    ///   zero (a seam).
+    ///
+    /// One machine body thus computes in a family of rings selected purely
+    /// at the boundary: `Z_N` (open), `Z_{N−1}` (looped), `Z_{N+1}`
+    /// (reversal-twisted) — with unitarity governed by `gcd` against
+    /// whichever ring the boundary chose.
+    ///
+    /// Note on truncation: the branch sum is accumulated under `trunc`,
+    /// and for large message dimensions the *partial* sums can transiently
+    /// need bond dimension near the profile's geometric cap — supply a
+    /// rank cap that accommodates it, or study large-message twists
+    /// branch-by-branch (`examples/boundary_twists.rs` does the latter
+    /// for `×43` on the diamond).
+    pub fn to_mpo_looped_twisted(&self, sigma: &[usize], trunc: TruncSpec) -> Mpo {
+        assert_eq!(sigma.len(), self.msg_dim, "twist must permute the message set");
+        let mut seen = vec![false; self.msg_dim];
+        for &v in sigma {
+            assert!(v < self.msg_dim && !seen[v], "twist must be a permutation");
+            seen[v] = true;
+        }
         let mut acc: Option<Mpo> = None;
         for m in 0..self.msg_dim {
-            let branch = self.to_mpo_with(Boundary::Fixed(m), Boundary::Fixed(m), trunc);
+            let branch = self.to_mpo_with(Boundary::Fixed(m), Boundary::Fixed(sigma[m]), trunc);
             acc = Some(match acc {
                 None => branch,
                 Some(a) => a.add(&branch, trunc),
@@ -617,6 +701,110 @@ mod tests {
             .map(|(s, (x, y))| (*s - (*x + *y)).abs())
             .fold(0.0, f64::max);
         assert!(diff < 1e-10, "max diff {}", diff);
+    }
+
+    #[test]
+    fn mult_skipping_is_identity_tensor_multiplier() {
+        // I₂ ⊗ (×5 mod 12) on [2, 3, 4] with site 0 skipped — and a pure
+        // tensor product across the skipped edge: bond 1 there after
+        // exact recompression.
+        let profile = vec![2usize, 3, 4];
+        let m = Transducer::mult_skipping(&profile, 0, 5).to_mpo(TruncSpec::exact());
+        for a in 0..2u128 {
+            for x in 0..12u128 {
+                let input = a * 12 + x;
+                let target = a * 12 + 5 * x % 12;
+                let f = m
+                    .apply_to(&basis(&profile, input))
+                    .fidelity(&basis(&profile, target));
+                assert!((f - 1.0).abs() < 1e-9, "a={} x={}: {}", a, x, f);
+            }
+        }
+        assert_eq!(m.bond_dims()[0], 1, "product across the skipped site");
+    }
+
+    #[test]
+    fn reversal_twisted_adder_is_diminished_one_mod_n_plus_one() {
+        // Twisting the carry loop by the swap turns the +c machine into
+        // the diminished-one adder of Fermat-transform hardware:
+        // value v = x+1 ∈ [1, N] represents Z_{N+1}, the map is
+        // v → v + (c+1) mod N+1, and the unrepresentable zero of Z_{N+1}
+        // is an annihilated branch (a hole) at x = N−1−c.
+        let profile = vec![2usize, 3, 4]; // N = 24, twist ring Z_25
+        let n = total_dim(&profile) as u128;
+        let c = 5u128;
+        let m = Transducer::adder(&profile, c).to_mpo_looped_twisted(&[1, 0], SPEC);
+        for x in [0u128, 3, 17, 20, 23] {
+            let v_out = (x + 1 + c + 1) % (n + 1);
+            assert_ne!(v_out, 0, "sample hit the hole");
+            let out = m.apply_to(&basis(&profile, x));
+            let f = out.fidelity(&basis(&profile, v_out - 1));
+            assert!((f - 1.0).abs() < 1e-9, "x={}: fidelity {}", x, f);
+        }
+        // The hole: x = N−1−c lands on the missing zero and is annihilated.
+        let hole = m.apply_to(&basis(&profile, n - 1 - c));
+        assert!(hole.norm() < 1e-9, "hole norm {}", hole.norm());
+    }
+
+    #[test]
+    fn reversal_twisted_multiplier_computes_mod_n_plus_one() {
+        // N = 72 sits between the twin primes 71 and 73: BOTH closed
+        // boundary rings are fields. ×6 (gcd(6, 72) = 6, defect 5/6 open)
+        // is healed by the straight loop (mod 71) AND by the reversal
+        // twist (mod 73) — where it is exactly v → 6v mod 73 on the
+        // diminished-one encoding, hole-free since gcd(6, 73) = 1.
+        let profile = vec![2usize, 3, 4, 3]; // N = 72
+        let n = total_dim(&profile) as u128;
+        let k = 6usize;
+        let sigma: Vec<usize> = (0..k).rev().collect();
+        let open = Transducer::mult(&profile, k).to_mpo(SPEC);
+        let looped = Transducer::mult(&profile, k).to_mpo_looped(SPEC);
+        let twisted = Transducer::mult(&profile, k).to_mpo_looped_twisted(&sigma, SPEC);
+        assert!(unitarity_defect(&open, SPEC) > 0.8);
+        assert!(unitarity_defect(&looped, SPEC) < 1e-8);
+        assert!(unitarity_defect(&twisted, SPEC) < 1e-8);
+        for x in [0u128, 35, 50, 71] {
+            let v_out = (k as u128 * (x + 1)) % (n + 1);
+            let out = twisted.apply_to(&basis(&profile, x));
+            let f = out.fidelity(&basis(&profile, v_out - 1));
+            assert!((f - 1.0).abs() < 1e-8, "x={}: fidelity {}", x, f);
+        }
+    }
+
+    #[test]
+    fn twist_ring_gcd_governs_unitarity_both_ways() {
+        // The twist can BREAK as well as heal: ×5 on Z_24 is unitary open
+        // (gcd(5, 24) = 1) but gcd(5, 25) = 5 on the twist ring — holes
+        // appear at v ≡ 0 (mod 5) and the twisted operator is defective.
+        let profile = vec![2usize, 3, 4]; // N = 24, twist ring Z_25 = 5²
+        let m5_open = Transducer::mult(&profile, 5).to_mpo(SPEC);
+        let m5_tw = Transducer::mult(&profile, 5).to_mpo_looped_twisted(&[4, 3, 2, 1, 0], SPEC);
+        assert!(unitarity_defect(&m5_open, SPEC) < 1e-8);
+        assert!(unitarity_defect(&m5_tw, SPEC) > 0.1);
+        // v = 5 (x = 4): 5·5 = 25 ≡ 0 (mod 25) — annihilated.
+        let hole = m5_tw.apply_to(&basis(&profile, 4));
+        assert!(hole.norm() < 1e-9, "hole norm {}", hole.norm());
+    }
+
+    #[test]
+    fn twisted_traced_identity_is_the_unilateral_shift() {
+        // The swap-twisted +0 machine is the unilateral shift
+        // Σ_{x<N−1} |x+1⟩⟨x| = A_1 − |0⟩⟨N−1|: everything conveys toward
+        // the missing zero and drains — the dual of the straight-traced
+        // identity I + |0⟩⟨N−1|, which pumps the double zero.
+        use crate::c64::C64;
+        let profile = vec![2usize, 3, 4]; // N = 24
+        let m = Transducer::adder(&profile, 0).to_mpo_looped_twisted(&[1, 0], SPEC);
+        let a1 = Transducer::adder(&profile, 1).to_mpo(SPEC);
+        let seam_digits: Vec<usize> = profile.iter().map(|&d| d - 1).collect();
+        let expected = a1.add(
+            &Mpo::basis_transfer(&profile, &[0, 0, 0], &seam_digits, SPEC)
+                .scale(C64::real(-1.0)),
+            SPEC,
+        );
+        let f = m.hs_fidelity(&expected);
+        assert!((f - 1.0).abs() < 1e-10, "A_1 − |0⟩⟨N−1|: {}", f);
+        assert!(m.apply_to(&basis(&profile, 23)).norm() < 1e-9);
     }
 
     #[test]
