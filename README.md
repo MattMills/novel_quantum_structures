@@ -499,6 +499,29 @@ for the multiplicative part, an additive component summed in the frame, the
 whole ordered by the ring's own banded Fourier web and read at the meeting
 point. (`cascade`, `radix`, `meet_in_the_middle`)
 
+**28. Bond dimension is a two-sided resource — representation efficiency
+buys bounded circuit-resource efficiency.** Bond dimension `χ` is the
+classical-simulation cost, and read the other way its `log₂ χ` bits of
+operator entanglement across a cut lower-bound the entangling gates any
+circuit must send across it. So `χ` prices *simulation* and *implementation*
+at once, and the crossing/meet-in-the-middle/tail-radix geometry minimizes
+both together. Measured circuit-resource gains, honestly bounded:
+**ancilla** — a single-front `×2357` carries `log₂(2357) = 12` qubits to
+implement an operator of only `3.9` bits of operator entanglement, `3×` more
+than it contains; the crossing `×7 ⋈ ÷11` achieves the intrinsic width at
+`4` qubits. **Gate count** — the tail-radix (reversal-free) ordering drops
+the digit-reversal swap network, and additive components *batch* in the
+Fourier frame (Draper's arithmetic on the mixed-radix wave): `K` additions
+in one frame round-trip, a measured `3.1× / 4.7× / 6.3× / 7.7×` for
+`K = 4 / 8 / 16 / 32`, approaching `~10×`. **The honest boundary**:
+representation efficiency *is* the quantum-advantage boundary — bounded `χ`
+means classically simulable, so these structured computations sit on the
+simulable side by construction; no general asymptotic speedup is claimed,
+the batching gain is Draper's credited, and the crossing's ancilla gain is
+for *structured/factorable* operations. The contribution is a unified
+meter (`χ`) and a geometry that minimizes it on both sides at once.
+(`cascade`, `radix`, `resource_efficiency`)
+
 ## Quick start
 
 ```rust
@@ -558,6 +581,7 @@ cargo run --release --example crossing_networks
 cargo run --release --example renormalizing_crossings
 cargo run --release --example complexity_census
 cargo run --release --example meet_in_the_middle
+cargo run --release --example resource_efficiency
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

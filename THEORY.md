@@ -998,6 +998,40 @@ the minimal-machine width of §8.7 realized *geometrically*, plus the
 frame's decoupling of the additive mesh; it is a width/representation
 efficiency (bond dimension), not a quantum speedup.
 
+**Proposition 8.14 (bond dimension is a two-sided resource).** Let `U` have
+operator Schmidt rank `χ` across a cut. Then (i) simulating `U` costs
+`O(n·χ³·d³)` time and `O(n·χ²·d²)` space (§12), and (ii) any circuit
+implementing `U` must send `Ω(log₂ χ)` two-qudit gates across that cut —
+each gate raises operator entanglement by `O(1)`, so `log₂ χ` bits of it
+require that many crossing gates. `χ` therefore prices *both* simulation and
+implementation, and the constructions of §8.12 minimize it on both sides at
+once.
+
+The measured consequences (finding 28, `examples/resource_efficiency.rs`),
+stated with their honest scope:
+
+* **Ancilla.** A single-front `×m` cascade carries a `⌈log₂ m⌉`-qubit carry
+  register to realize an operator whose true operator entanglement is only
+  `log₂(width)`. On `Z_2880`, `×2357` spends 12 carry qubits for a
+  `3.9`-bit operator; the crossing `×7 ⋈ ÷11` (Prop. 8.12) achieves the
+  intrinsic width at 4 — the machine no longer carries more than the
+  operator contains. (Real, but a statement about the cascade realization,
+  not a bound over all circuits.)
+* **Gate count.** The reversal-free ordering (Prop. 8.13) drops the
+  digit-reversal swap network (`Θ(n)` gates), and additive components batch
+  in the frame: `K` additions cost one QFT round-trip plus `K` cheap phase
+  layers rather than `K` round-trips — a measured `3.1×…7.7×` for
+  `K = 4…32`, approaching `(2·|QFT|+|ramp|)/|ramp| ≈ 10×`. This *is* Draper's
+  Fourier arithmetic [7]; the only novelty is that it runs on the
+  heterogeneous mixed-radix wave and composes with the crossing.
+* **What is not claimed.** No asymptotic advantage over the best known
+  modular-arithmetic circuits. Indeed the framing cuts the other way:
+  representation efficiency *is* the quantum-advantage boundary — a
+  bounded-`χ` computation is classically simulable (§12) and so carries no
+  quantum advantage. These structured computations sit on the simulable side
+  by construction; the value is the unified meter `χ` and a geometry that
+  minimizes it for simulation and implementation together.
+
 ### 9.8 The frame flow: fractional powers of the QFT
 
 The first edition of this document (§13, problem 3) supposed fractional
