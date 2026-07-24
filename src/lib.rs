@@ -54,6 +54,10 @@
 //!   ([`mpo::Mpo::compose_after`]) and apply ([`mpo::Mpo::apply_to`]) as
 //!   first-class objects, and their bond spectra measure operator
 //!   entanglement — the width of the past↔future correlation pipeline.
+//!   Control-selection ([`mpo::Mpo::select_on`]) makes controlled blocks
+//!   first-class — with [`cascade::Transducer::mult_skipping`] it builds
+//!   the `C-U^{2^j}` of phase estimation, and the full Shor kernel runs
+//!   end-to-end (`examples/shor_kernel.rs`).
 //! * [`radix`] — the **structured tail-radix phase web**: the mixed-radix
 //!   Fourier transform over the chain's ring `Z_N`, whose output digit `j`
 //!   couples only to input digits `i ≥ j` with angle `2π/(d_j···d_i)`;

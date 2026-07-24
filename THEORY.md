@@ -31,7 +31,7 @@ vectors) is the *language* in which those questions become sharp.
 | 5 | scale morphing | `mps` | 5 |
 | 6 | operators as states | `mpo` | 9 (setup) |
 | 7 | the tail-radix phase web | `radix` | 8–11 |
-| 8 | stepwise cascades, their duals, the width atlas | `cascade`, `width` | 15–18, 20 |
+| 8 | stepwise cascades, duals, the atlas, the Shor kernel | `cascade`, `width`, `mpo` | 15–18, 20, 23 |
 | 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
 | 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
 | 11 | numerical foundations | `mat`, `c64` | design notes |
@@ -717,6 +717,68 @@ sweep's **alphabet** comes close — the narrow presentation exists only
 after composition + recompression. Machines are upper-bound certificates
 for construction, and the intrinsic width is in general strictly finer
 than every one of them (see the revised open problem 2 in §12).
+
+### 8.11 Controlled cascades: the priced Shor kernel
+
+Phase estimation needs controlled powers
+`C-U^{2^j} = |0⟩⟨0| ⊗ I + |1⟩⟨1| ⊗ U^{2^j}`. On the chain these are
+boundary-machine algebra: `Transducer::mult_skipping` builds
+`I_{d_c} ⊗ (×k mod N/d_c)` — the carry front *tunnels through* the
+control site, and the lifted operator is a pure tensor product across it
+(bond 1) — and `Mpo::select_on` composes projector branches into the
+controlled operator. Its exact cost:
+
+**Proposition 8.11 (controlled cut rank).** Let
+`CM = P₀ ⊗ I + P₁ ⊗ M_k` with the control left of a register cut
+`(L | S)`, and let `w` be the width of `M_k` at that cut (Theorem 8.5).
+Then
+
+```text
+  χ_cut(CM) = w + 1   if k ≢ 1 (mod S) ,
+  χ_cut(CM) = w       if k ≡ 1 (mod S)    — the control is free,
+```
+
+and across the control's own cut `χ = 2` (for `M_k ≠ I`).
+
+*Proof.* Decompose `M_k = Σ_γ (X_L^γ M_k^{(L)}) ⊗ (M_k^{(S)} Π_γ)` as in
+Theorem 8.5. The left family `{P₀⊗I_L} ∪ {P₁⊗X^γ M^{(L)}}` is always
+independent (the projectors have disjoint supports), so the rank is
+`1 + w` unless the right family `{I_S} ∪ {M^{(S)}Π_γ}` is dependent.
+`I_S = Σ_γ c_γ M^{(S)}Π_γ` forces `Σ_γ c_γ Π_γ = (M^{(S)})⁻¹`, whose left
+side is diagonal — possible iff `M^{(S)} = I`, i.e. `k ≡ 1 (mod S)`, where
+`c_γ = 1` works (`Σ_γ Π_γ = I`). In that case
+`CM = Σ_γ (P₀⊗I_L + P₁⊗X^γ M^{(L)}) ⊗ Π_γ` is a `w`-term decomposition
+with both families independent. ∎
+
+Measured, the formula prices the entire order-finding protocol on the
+diamond (finding 23, `examples/shor_kernel.rs`): the `C-U^{2^j}` family
+for `k = 7` on `Z_1440` has bond profiles `[2,4,8,8,6,2]`,
+`[2,4,13,24,6,2]`, `[2,3,3,3,3,2]`, `[2,3,3,3,3,2]` — every bond as
+predicted, and the deep powers `961 = 7⁴` and `481 = 7⁸` satisfy
+`k ≡ 1 (mod S)` on *every* cut (`961 ≡ 1` mod 480, 120, 24, 6, 2), so
+their control is free: the controlled operator is exactly as wide as the
+bare multiplier. Resonance and control-freeness are the same phenomenon
+seen from two sides — deep in a squaring orbit, the multiplier acts
+almost-locally, and there is nothing for the control to correlate with.
+
+Two further measured facts complete the kernel:
+
+* **Phase kickback is bond-free.** On an eigenstate `|u_s⟩` of `×k`, the
+  controlled operator sends `|+⟩⊗|u_s⟩` to a *product*
+  `((|0⟩ + e^{2πi·s·2^j/r}|1⟩)/√2) ⊗ |u_s⟩`: the control cut stays at
+  `χ = 1` while the phase lands (measured phases 30°/60°/120°/240° exact
+  at tolerance `10⁻⁶`; a non-eigenstate register gives `χ = 2`). The
+  resource statement of phase estimation, read directly off a bond
+  dimension.
+* **Order finding closes end-to-end.** Semiclassical (Kitaev) phase
+  estimation with one reused valley qubit — measurement by projection,
+  feedback rotations conditioned on earlier bits — plus continued
+  fractions bounded by the Carmichael exponent `λ(1440) = 24` recovers
+  `ord(7 mod 1440) = 12` from six 10-bit runs (measured fractions
+  `1/3, 5/12, 1/4, 1/3, 2/3, 5/6`, lcm of denominators 12). The register
+  is never measured; each run collapses onto an eigenstate through the
+  control's backaction alone. Both Shor registers live on one dimension
+  wave: control in a valley, arithmetic in the interior.
 
 
 ## 9. Operator flows and the operation-width cursor

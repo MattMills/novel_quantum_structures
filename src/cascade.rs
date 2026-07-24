@@ -152,6 +152,49 @@ impl Transducer {
         }
     }
 
+    /// [`Transducer::mult`] acting on the sub-ring of every site **except**
+    /// `skip`, which passes both its digit and the message through
+    /// unchanged. The lifted operator is exactly
+    /// `I_{d_skip} ⊗ (×k mod N/d_skip)` — a pure tensor product across the
+    /// skipped site (the message front tunnels through it), so exact
+    /// recompression finds bond dimension 1 there. This is the raw
+    /// material for **controlled arithmetic**: compose with a projector at
+    /// `skip` via [`crate::mpo::Mpo::select_on`] to make the
+    /// multiplication conditional on a control digit — the `C-U^{2^j}` of
+    /// the Shor kernel (see `examples/shor_kernel.rs`).
+    pub fn mult_skipping(profile: &[usize], skip: usize, k: usize) -> Transducer {
+        assert!(skip < profile.len());
+        assert!(k >= 1, "k must be positive");
+        assert!(
+            k <= 512,
+            "direct construction is for modest k; compose cascades for larger multipliers"
+        );
+        let rules = profile
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| {
+                let mut r = vec![(0usize, 0usize); k * d];
+                for msg_in in 0..k {
+                    for p_in in 0..d {
+                        r[msg_in * d + p_in] = if i == skip {
+                            (msg_in, p_in)
+                        } else {
+                            let v = k * p_in + msg_in;
+                            (v / d, v % d)
+                        };
+                    }
+                }
+                r
+            })
+            .collect();
+        Transducer {
+            profile: profile.to_vec(),
+            msg_dim: k,
+            rules,
+            direction: Direction::RightToLeft,
+        }
+    }
+
     /// Modular **division**: the geometrically opposed machine to
     /// [`Transducer::mult`], computing the same inverse operation with a
     /// dual state set running the other way.
@@ -658,6 +701,26 @@ mod tests {
             .map(|(s, (x, y))| (*s - (*x + *y)).abs())
             .fold(0.0, f64::max);
         assert!(diff < 1e-10, "max diff {}", diff);
+    }
+
+    #[test]
+    fn mult_skipping_is_identity_tensor_multiplier() {
+        // I₂ ⊗ (×5 mod 12) on [2, 3, 4] with site 0 skipped — and a pure
+        // tensor product across the skipped edge: bond 1 there after
+        // exact recompression.
+        let profile = vec![2usize, 3, 4];
+        let m = Transducer::mult_skipping(&profile, 0, 5).to_mpo(TruncSpec::exact());
+        for a in 0..2u128 {
+            for x in 0..12u128 {
+                let input = a * 12 + x;
+                let target = a * 12 + 5 * x % 12;
+                let f = m
+                    .apply_to(&basis(&profile, input))
+                    .fidelity(&basis(&profile, target));
+                assert!((f - 1.0).abs() < 1e-9, "a={} x={}: {}", a, x, f);
+            }
+        }
+        assert_eq!(m.bond_dims()[0], 1, "product across the skipped site");
     }
 
     #[test]

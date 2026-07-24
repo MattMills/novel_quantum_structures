@@ -60,6 +60,10 @@ number theory before any tensor exists (finding 20), **boundary twists**
 re-wire a machine's message loop so one body computes mod `N−1`, `N`, or
 `N+1` (finding 21), and the **frame flow** takes fractional powers of the
 QFT itself out of its own operator algebra, `F⁴ = I` (finding 22).
+Controlled cascades then run the **full Shor kernel** — controlled
+modular exponentiation, phase estimation on one reused valley qubit,
+order recovery by continued fractions — priced bond-for-bond in advance
+(finding 23).
 
 ```text
   5           ●                 ●
@@ -108,7 +112,7 @@ renormalization:
 | `gates` | qudit gates incl. heterogeneous couplers: `cshift`, `cphase`, and `xswap` (subspace exchange — the bidirectional-pair gate) |
 | `embed` | hosted-qubit registers: gate lifting, compilation of qubit circuits onto qudit chains, exact extraction, `qubit_bit_swap` shuttling |
 | `zigzag` | diamond/wave profiles, mirror pairs, valleys & waists, named circuit families (`bowtie`, `crosswave_round`, `brickwork_random`) |
-| `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
+| `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics; `select_on` — control-selection `Σ_a \|a⟩⟨a\| ∘ U^a`, making controlled blocks (the `C-U^{2^j}` of phase estimation) first-class |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total); `FrameFlow` — fractional powers of the **QFT itself** as the four-term projector combination `F^t = Σ c_m(t)·F^m` (`F⁴ = I`), no eigensolver needed |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
@@ -359,6 +363,32 @@ Participation of `F^t|x₀⟩` breathes with period 2: localized at even `t`,
 maximally flat (1/N) at odd `t`. (`flow::FrameFlow`,
 `fractional_fourier`)
 
+**23. The Shor kernel runs end-to-end — controlled, priced, and
+bond-free where it counts.** `Transducer::mult_skipping` (the carry front
+tunnels through a control site, leaving `I ⊗ ×k` at bond 1 across it) and
+`Mpo::select_on` (projector-branch composition) make controlled modular
+arithmetic first-class. The exact cost obeys the **controlled-width
+formula** `χ = w + [k ≢ 1 mod S]` (THEORY.md Prop 8.11) — and the deep
+QPE powers are resonant on every cut, so **their control is free**: the
+`C-U^{2^j}` family for 7 mod 1440 on the diamond measures
+`[2,4,8,8,6,2] / [2,4,13,24,6,2] / [2,3,3,3,3,2] / [2,3,3,3,3,2]`, every
+bond as predicted, with `961 = 7⁴` and `481 = 7⁸` satisfying
+`k ≡ 1 (mod S)` at every cut. Phase kickback is **bond-free**: on an
+eigenstate the control cut stays at `χ = 1` while the phase lands
+(30°/60°/120°/240° measured exactly); a non-eigenstate register costs
+`χ = 2` — the resource statement of phase estimation, read off a bond
+dimension. Semiclassical Kitaev phase estimation — the single valley
+qubit at site 0 reused for all 10 bits, measurement by projection,
+feedback rotations conditioned on earlier bits — plus continued fractions
+bounded by the Carmichael exponent `λ(1440) = 24` recovers
+**`ord(7 mod 1440) = 12`** from six runs (measured fractions
+`1/3, 5/12, 1/4, 1/3, 2/3, 5/6`; the register is never measured — each
+run collapses onto an eigenstate through control backaction alone). Both
+Shor registers live on one dimension wave — control in the valleys,
+arithmetic in the interior — and the whole protocol runs in a fifth of a
+second. (`cascade::Transducer::mult_skipping`, `mpo::Mpo::select_on`,
+`shor_kernel`)
+
 ## Quick start
 
 ```rust
@@ -399,7 +429,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 100 tests, dense-vs-MPS cross-validation
+cargo test                                   # 104 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -412,6 +442,7 @@ cargo run --release --example self_stabilizing_boundaries
 cargo run --release --example width_atlas
 cargo run --release --example boundary_twists
 cargo run --release --example fractional_fourier
+cargo run --release --example shor_kernel
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -446,11 +477,12 @@ No dependencies; builds with any reasonably recent stable Rust.
   boundary measured in `long_wave` invites a systematic study: Clifford-like
   qudit circuits, cross-scale couplings only, dimension-commensurate gates
   (`gcd`-respecting `cshift`/`cphase` webs)…
-* **Fourier-space arithmetic beyond addition.** The adder pipeline
-  (finding 9) begs for multiplication: `x → k·x mod N` as a composed block,
-  and from there modular exponentiation — the Shor kernel — as a circuit of
-  circuits over the zigzag's ring, with operator entanglement as the cost
-  meter.
+* **The Shor kernel at scale.** Multiplication, recursive exponentiation,
+  controlled powers, and order finding all run (findings 15, 20, 23). Next:
+  coherent readout — a full QFT over a *hosted control register* (the
+  wave's valley qubits, finding 3) instead of the semiclassical single
+  qubit — and order finding on the 25-site wave, where the atlas already
+  prices the `C-U` family over `Z_{8.6·10¹²}`.
 * **`xswap` as a disentangler.** For mirror-symmetric correlations the
   subspace exchange can relocate entanglement toward the waist before
   truncation — a MERA-style disentangler adapted to the wave. The
