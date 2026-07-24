@@ -364,6 +364,26 @@ mod tests {
     }
 
     #[test]
+    fn wave_weave_cost_is_waist_local_and_periodic() {
+        // Weaving a MULTI-period wave: the cost concentrates at the coarse
+        // waists and is periodic — a second period does not raise the peak
+        // (the crossing cost is local to each RG cell), and valleys pinch
+        // the bond to 1.
+        let one = zigzag::wave(1, 3, 1); // [1,2,3,2,1]
+        let two = zigzag::wave(1, 3, 2); // [1,2,3,2,1,2,3,2,1]
+        let (n1, e1) = wave_weave(&one, 2);
+        let (n2, e2) = wave_weave(&two, 2);
+        let m1 = build(&n1, &n1.cluster(&e1));
+        let mut m2 = build(&n2, &n2.cluster(&e2));
+        // Same peak cost per period, independent of how many periods.
+        assert_eq!(m1.max_bond_dim(), m2.max_bond_dim());
+        // Valleys pinch: interior χ = 1 bonds appear (the fine rims).
+        let bonds = m2.bond_dims();
+        assert!(bonds.iter().filter(|&&b| b == 1).count() >= 4);
+        assert!((dense_fidelity(&n2, &n2.cluster(&e2)) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn wave_weave_base_follows_the_profile() {
         // A cut between columns c, c+1 costs min(profile[c],profile[c+1])^rows.
         let profile = zigzag::diamond(1, 3); // [1,2,3,2,1]

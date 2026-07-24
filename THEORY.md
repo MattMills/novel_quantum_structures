@@ -34,7 +34,7 @@ vectors) is the *language* in which those questions become sharp.
 | 8 | stepwise cascades, duals, the atlas, the Shor kernel | `cascade`, `width`, `mpo` | 15–18, 20, 23 |
 | 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
 | 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
-| 11 | crossing strands and networks; the cutwidth law | `crossing`, `network` | 24, 25 |
+| 11 | crossing strands, networks, the cutwidth law, and the RG wave | `crossing`, `network` | 24, 25, 26 |
 | 12 | numerical foundations | `mat`, `c64` | design notes |
 | 13 | dictionary and open problems | — | open directions |
 
@@ -1344,6 +1344,80 @@ minimal-cutwidth ordering is the layout-optimization problem, `NP`-hard in
 general but exactly solvable for the structured graphs here, and the honest
 successor to "interleave to compute" (§11.6).
 
+### 11.9 Crossing the renormalization wave
+
+The strands crossed so far were flat. The zigzag *wave* `wave(lo,hi,p)` is
+not — it is a real-space renormalization structure (§2, findings 5–7):
+valleys are fine (`d = lo`), waists coarse (`d = hi`), `merge_sites` is a
+coarse-graining step, and structured multi-scale dynamics stays compressed
+riding the wave. Applying the crossing to *these* strands, the crossing
+inherits the scale hierarchy — three measured effects (finding 26).
+
+**Proposition 11.10 (a crossing has a scale).** Cross two `wave(lo,hi,p)`
+strands antiparallel. The dimension band `d` has multiplicity `m(d)` among
+the crossing pairs, and Bell-coupling it injects `m(d)·log d` bits in
+`m(d)` Schmidt modes of rank `d` each. The waist band `d = hi` has
+`m = p` (one crossing per shared waist — few, coarse, *fat* modes); the
+fine bands have `m = 2p` (many, *thin* modes). So the coupling's mode
+content is coarse at the waists and fine at the valleys — the wave's RG
+hierarchy, transported onto the inter-strand coupling.
+
+*Proof.* Multiplicity counting on the palindromic wave: `hi` appears once
+per period (`p` times), each interior band twice per period (`2p`); the
+crossing budget of Prop. 11.2 then reads off `m(d)·log d` in `m(d)` modes.
+∎ (Measured on `wave(1,5,2)`: level 5 → 2 crossings of 5 modes, level 2 →
+4 crossings of 2 modes.)
+
+**Proposition 11.11 (the woven wave lattice — RG-shaped area law).** Weave
+`rows` copies of a wave `P` (vertical bonds at `P[c]`, horizontal at
+`min(P[c],P[c+1])`, column-major). The bond dimension across the cut after
+column `c` is `min(P[c],P[c+1])^{rows}` — the area law of Theorem 11.9 with
+a *wave-shaped base*: thick `hi^{rows}` at the coarse waists, pinched to 1
+at the `d = 1` rims, and **periodic** — a second period does not raise the
+peak, because the crossing cost is local to each RG cell.
+
+*Proof.* Column-major order makes the vertical bonds (within a column of
+`rows` sites) local and the `rows` horizontal bonds between columns `c` and
+`c+1` the crossing set of a cut there; those form a matching at dimension
+`min(P[c],P[c+1])`, so Theorem 11.9 gives rank `min(P[c],P[c+1])^{rows}`.
+The profile of column-gaps is the wave's, repeated per period. ∎
+
+Measured: weaving `wave(1,3,2)` at 2 and 3 rows gives bond profiles
+`[1,1,2,4,6,4,2,1,1,1,2,4,6,4,2,1,1]` and `[…,8,12,12,8,…]` — two humps at
+the two waists, thickening `6 → 12` with the added row, valleys pinched to
+1, dense-validated. **The RG structure decides where the area law bites:
+hardest at the coarse blocks.**
+
+**Proposition 11.12 (RG-covariance of a crossing).** Let `|Ψ⟩` be a crossed
+state and `R` an exact coarse-graining (`merge_sites`) on a window of one
+strand disjoint from the cut being read. Then `R|Ψ⟩` is again a crossed
+state with the coupling carried onto the coarse block, and `R` is
+invertible (`split_site`) with `split ∘ merge = 1`: coarse-graining and
+crossing commute.
+
+*Proof.* `merge_sites` is the associativity isomorphism
+`C^{d_i} ⊗ C^{d_{i+1}} ≅ C^{d_i d_{i+1}}` (Prop. 5.1) applied to `|Ψ⟩` as a
+vector; it changes the tensor factorization, not the state, so any coupling
+supported on the merged sites now acts on a sublevel of the coarse site,
+and `split_site` inverts it exactly. ∎
+
+Measured: crossing twin `[1,2,3,4,3,2,1]`, then merging strand A's waist
+cell into one `d = 36` site and splitting back, returns the original at
+fidelity `1.000000000000`. The crossing coupling rides the RG step onto the
+coarse waist and back — a covariant object under the wave's
+renormalization.
+
+Together: **the wave supplies a scale ladder, the crossing supplies
+coupling, and the two compose** — the coupling acquires a scale, a 2D
+lattice of waves carries an area law shaped like the wave, and the RG
+transformation commutes with the crossing. The complex, expanding,
+multi-scale geometry is still costed by one number, the cutwidth, now
+modulated by the renormalization structure of the strands. What remains
+open is the genuine RG *flow*: iterating coarse-graining on a woven wave
+lattice and asking whether the effective crossing coupling runs to a fixed
+point — the natural meeting of this crate's MERA-like geometry with its
+crossing calculus (§13, problem 7).
+
 
 ## 12. Numerical foundations
 
@@ -1378,7 +1452,7 @@ dependency-free, so every numerical claim above rests on ~900 audited lines
 The epistemology of the crate follows from §7.4's lesson: *rank-side*
 guarantees (exact canonicalization, discard tallies) and *weight-side*
 guarantees (f64 phase resolution, relative cutoffs) are different
-promises, and the test suite exercises both — 122 tests, with every
+promises, and the test suite exercises both — 125 tests, with every
 structural mechanism cross-validated against the dense ground-truth
 simulator and, where possible, against closed-form laws (Schmidt spectra,
 entropy values, moment laws, convergence rates) rather than against
@@ -1471,10 +1545,16 @@ Problems this document sharpens beyond the README's open directions:
    many waves at *arbitrary* angles poses a real layout search, and the
    `xswap`-as-disentangler question (can subspace exchange relocate
    inter-strand entanglement toward chosen cuts, lowering the realized
-   cutwidth below the naive graph value?) is now concretely measurable. The
-   physics beyond: fermionic or frustrated couplers on a weave, and whether
-   any crossing network with a genuinely two-dimensional coupling graph can
-   dodge the area law through the heterogeneity of the dimension wave.
+   cutwidth below the naive graph value?) is now concretely measurable. And
+   §11.9 opens the RG axis: crossing the multi-V renormalization wave gives
+   the coupling a scale and shapes the area law like the wave (finding 26),
+   but the genuine renormalization *flow* — iterate `merge_sites` on a woven
+   wave lattice and watch the effective crossing coupling run, toward a
+   fixed point or away — is untouched, and is where this crate's MERA-like
+   geometry and its crossing calculus would truly meet. The physics beyond:
+   fermionic or frustrated couplers on a weave, and whether any crossing
+   network with a genuinely two-dimensional coupling graph can dodge the
+   area law through the heterogeneity of the dimension wave.
 
 
 ## References

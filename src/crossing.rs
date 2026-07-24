@@ -430,6 +430,45 @@ mod tests {
     }
 
     #[test]
+    fn coarse_graining_preserves_a_crossing() {
+        // RG covariance: merging a crossed strand toward its waist (an
+        // exact coarse-graining step) carries the crossing coupling up to
+        // the coarse block and splits back, state preserved exactly.
+        let strand = zigzag::diamond(1, 4); // [1,2,3,4,3,2,1]
+        let x = Crossing::twin(&strand, false); // ladder, block layout
+        let mut crossed = Mps::zero_state(&x.dims(), TruncSpec::exact());
+        x.bell(&[2, 3, 4]).run_mps(&mut crossed);
+
+        let mut coarse = crossed.clone();
+        coarse.merge_sites(2); // fuse (2,3): d = 12
+        coarse.merge_sites(2); // fuse (·,3): d = 36 — the coarse waist block
+        assert_eq!(coarse.dims[2], 36);
+        coarse.split_site(2, 12, 3);
+        coarse.split_site(2, 3, 4);
+        assert!(
+            (coarse.fidelity(&crossed) - 1.0).abs() < 1e-10,
+            "RG step broke the crossing: {}",
+            coarse.fidelity(&crossed)
+        );
+    }
+
+    #[test]
+    fn crossing_has_a_scale() {
+        // On a wave, coupling at the waist (coarse) is few crossings of fat
+        // modes; toward the valley (fine), many crossings of thin modes.
+        let w = zigzag::wave(1, 5, 2);
+        let x = Crossing::twin(&w, true);
+        // Two periods → two shared waists → two level-5 crossings.
+        assert_eq!(x.pairs_at(&[5]).len(), 2);
+        // The fine valley band (d=2) has more crossings than the coarse waist.
+        assert!(x.pairs_at(&[2]).len() > x.pairs_at(&[5]).len());
+        // Coarse crossings carry more entropy per crossing (fat modes).
+        let per_waist = x.bell_entropy_bits(&[5]) / x.pairs_at(&[5]).len() as f64;
+        let per_valley = x.bell_entropy_bits(&[2]) / x.pairs_at(&[2]).len() as f64;
+        assert!(per_waist > per_valley, "{} !> {}", per_waist, per_valley);
+    }
+
+    #[test]
     fn structured_crossing_beats_scrambling() {
         // A structured single-level crossing stays at its budget rank; a
         // random cross coupling on the same pairs demands far more.

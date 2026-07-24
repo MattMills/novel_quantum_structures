@@ -450,6 +450,27 @@ constant cutwidth and classically cheap; a second transverse direction is
 exponential. That threshold, not the strand count, governs simulability.
 (`network`, `crossing_networks`)
 
+**26. Crossing the renormalization wave: the coupling acquires a scale.**
+The zigzag *wave* (many V's) is a real-space renormalization structure —
+valleys fine, waists coarse, `merge_sites` a coarse-graining step,
+structured dynamics riding the scale hierarchy (findings 5–7). Applying the
+crossing to *these* strands, the crossing inherits the hierarchy, three
+measured ways. **A crossing has a scale**: coupling two `wave(1,5,2)`
+strands at the coarse waists is few crossings of *fat* modes (2 crossings,
+5 modes), at the fine valleys many of *thin* modes (4 crossings, 2 modes).
+**A woven lattice of waves carries an RG-shaped area law**: the bond profile
+of a wave weave *is* the wave — `[1,1,2,4,6,4,2,1,1,1,2,4,6,4,2,1,1]`, two
+humps at the two waists pinched to 1 at the valleys — thickening with each
+row (`6 → 12` at 2 → 3 rows) and *periodic* (a second period doesn't raise
+the peak; the cost is local to each RG cell). **A crossing is
+RG-covariant**: coarse-graining a crossed strand toward its waist (an exact
+`merge_sites`) carries the coupling up onto the coarse `d = 36` block and
+splits back at fidelity `1.000000000000` — scale morphing and crossing
+commute. The wave supplies a scale ladder, the crossing supplies coupling,
+and everything expands into a complex multi-scale shape still costed by one
+number — the cutwidth, now modulated by the renormalization structure.
+(`crossing`, `network`, `renormalizing_crossings`)
+
 ## Quick start
 
 ```rust
@@ -490,7 +511,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 122 tests, dense-vs-MPS cross-validation
+cargo test                                   # 125 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -506,6 +527,7 @@ cargo run --release --example fractional_fourier
 cargo run --release --example shor_kernel
 cargo run --release --example crossing_vees
 cargo run --release --example crossing_networks
+cargo run --release --example renormalizing_crossings
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -513,7 +535,7 @@ No dependencies; builds with any reasonably recent stable Rust.
 ## Design notes
 
 * **Verification-first.** Every mechanism is cross-checked against the exact
-  dense simulator on small chains (122 tests), including randomized circuits
+  dense simulator on small chains (125 tests), including randomized circuits
   over both orientations of long-range gates, canonical-form invariance, and
   analytic entropy values.
 * **In-crate numerics.** The SVD is a one-sided Jacobi with two
