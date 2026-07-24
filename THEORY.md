@@ -1,0 +1,1097 @@
+# Theory notes
+
+**The mathematics of twisted zigzag qudit chains — definitions, propositions,
+and proofs behind the measurements in the [README](README.md).**
+
+The README reports *what this library measures*; this document derives *why
+those numbers are what they are*. It is written as a short monograph:
+numbered propositions with proofs, each tied to the module that implements
+the object and the example or test that measures the claim. Where a result
+is stated without proof it is marked as **measured** — an executable fact of
+the repository, reproducible from `examples/` — and where a derivation here
+sharpens or corrects an idealized claim in the README, that is said
+explicitly (see e.g. Proposition 9.6 on "orthogonal" imputations).
+
+Nothing here claims quantum advantage. The subject is a classical
+*representation theory of structured operators* — which states, circuit
+blocks, machines, and flows admit narrow tensor-network presentations, what
+the width of a presentation means, and what new dynamics appear when the
+presentations' boundary conditions are opened, dualized, or closed into
+loops. The quantum formalism (unitarity, entanglement, superposed boundary
+vectors) is the *language* in which those questions become sharp.
+
+### Reading map
+
+| § | subject | modules | README findings |
+|---|---------|---------|-----------------|
+| 1 | chains, rings, digit frames, zigzag geometry | `zigzag`, `dense` | — |
+| 2 | the entanglement budget | `mps`, `zigzag` | 1, 2, 6, 7 |
+| 3 | heterogeneous MPS mechanics | `mps`, `mat` | — |
+| 4 | hosted qubits | `embed` | 3, 4 |
+| 5 | scale morphing | `mps` | 5 |
+| 6 | operators as states | `mpo` | 9 (setup) |
+| 7 | the tail-radix phase web | `radix` | 8–11 |
+| 8 | stepwise cascades and their duals | `cascade` | 15–18 |
+| 9 | operator flows and the width cursor | `flow` | 12–14 |
+| 10 | self-stabilizing boundary systems | `stabilize`, `cascade` | 19 |
+| 11 | numerical foundations | `mat`, `c64` | design notes |
+| 12 | dictionary and open problems | — | open directions |
+
+Throughout: sites are indexed `0 … n−1`, local dimensions `d_0 … d_{n−1}`,
+`N = Π_k d_k`, and `ω = ω_N = e^{2πi/N}`. "Bond `m`" is the cut between
+sites `m` and `m+1`. All logarithms in entropy statements are base 2.
+
+
+## 1. Kinematics: chains, rings, and digit frames
+
+**Definition 1.1 (chain, profile).** A *heterogeneous qudit chain* is a
+Hilbert space `H = C^{d_0} ⊗ ··· ⊗ C^{d_{n−1}}` together with its
+*dimension profile* `(d_0, …, d_{n−1})`, `d_i ≥ 2`. Nothing requires the
+`d_i` equal; profiles that rise and fall are the objects of study.
+
+**Definition 1.2 (digit frames).** The chain's computational basis is
+identified with the ring `Z_N` in two ways.
+
+* **Standard place value** — site 0 most significant:
+
+  ```text
+  P_i = Π_{k>i} d_k ,        x = Σ_i x_i · P_i .
+  ```
+
+* **Reversed place value** — site 0 least significant:
+
+  ```text
+  Q_j = Π_{k<j} d_k ,        y = Σ_j y'_j · Q_j .
+  ```
+
+The *digit reversal* `ρ : Z_N → Z_N` sends the number with standard digits
+`(x_0, …, x_{n−1})` to the number with standard digits
+`(x_{n−1}, …, x_0)`. It is an involution, and it is realizable by site-local
+swaps exactly when the profile is palindromic (`d_i = d_{n−1−i}`), since a
+digit moving from site `i` to site `n−1−i` must find a slot of its own
+dimension there. Both frames are used constantly: the mixed-radix Fourier
+transform (§7) naturally *produces* reversed-place digits, and choosing to
+stay in that convention is what makes Fourier arithmetic profile-agnostic.
+
+**Definition 1.3 (zigzag geometry, `zigzag`).** The *diamond*
+`diamond(lo, hi)` is the profile `lo, lo+1, …, hi, …, lo+1, lo`; the *wave*
+`wave(lo, hi, p)` glues `p` diamonds at their shared `lo`-valleys. For a
+palindromic profile the *mirror pairs* are `(i, n−1−i)`; the *waists* are
+the maximal-dimension sites, the *valleys* the minimal ones. On a
+palindrome, mirror pairs have equal dimension — so they admit the full
+subspace exchange `xswap(d, d) = SWAP` and generalized Bell pairing. These
+are the "bidirectional pairs": couplings that jump across the dimension
+wave without touching the intermediate scales.
+
+The flagship instance is `diamond(2, 5) = [2,3,4,5,4,3,2]`, whose ring is
+`Z_2880`; the flagship large instance is `wave(2,5,4)`, 25 sites, ring size
+`N = 8 599 633 920 000 ≈ 8.6·10¹²` (a dense state vector would occupy
+≈ 138 TB).
+
+
+## 2. The entanglement budget
+
+The first structural fact is that a dimension profile is not merely a list
+of storage sizes — it is a *hard ceiling on entanglement*, bond by bond.
+
+**Proposition 2.1 (rank ceiling).** Let `|ψ⟩ ∈ H` and let
+`Λ_m = Π_{i≤m} d_i` be the left volume at bond `m`. The Schmidt rank of
+`|ψ⟩` across bond `m` satisfies
+
+```text
+rank_m(ψ) ≤ B_m := min( Λ_m , N/Λ_m ),
+```
+
+and consequently the bond entropy satisfies `S_m ≤ log B_m`.
+
+*Proof.* The Schmidt rank across a cut is the matrix rank of `ψ` reshaped
+to a `Λ_m × (N/Λ_m)` matrix, and matrix rank is at most the smaller side
+length. ∎
+
+For `diamond(2,5)` the budget profile is
+
+```text
+B = [ 2, 6, 24, 24, 6, 2 ],
+```
+
+peaking at 24 across the two bonds flanking the waist. The profile is
+literally an entanglement resource specification: geometry doubles as
+budget, the same intuition that makes hierarchical (MERA-style) ansätze
+efficient. On a wave the budget rises and falls periodically, which is why
+the measured entanglement profile of structured dynamics "rides the wave"
+(finding 6).
+
+**Proposition 2.2 (bowtie spectrum).** Let the profile be a palindrome of
+odd length with strictly increasing flank `d_0 < d_1 < ··· < d_c` (a
+diamond). The *bowtie state* — the generalized Bell state
+`|Φ_d⟩ = Σ_{j<d} |j,j⟩/√d` on every mirror pair, `|0⟩` on the center — has,
+across bond `m` (take `m < c` by mirror symmetry):
+
+```text
+rank_m = Π_{i≤m} d_i = Λ_m = B_m ,      S_m = Σ_{i≤m} log d_i  bits,
+```
+
+with a flat Schmidt spectrum. In particular the bowtie **saturates the
+budget of Proposition 2.1 at every bond**.
+
+*Proof.* The state is a tensor product over pairs. A pair `(i, n−1−i)` with
+`i ≤ m` has one leg on each side of the cut and contributes a factor with
+Schmidt rank `d_i` and flat spectrum `1/√d_i`; a pair with `i > m` lies
+entirely on the right of the cut (both `i > m` and `n−1−i > m` hold, the
+latter because `m < c ≤ n−1−i`) and contributes rank 1, as does the center
+site. Schmidt ranks and spectra multiply across tensor products, giving
+rank `Π_{i≤m} d_i` and entropy `Σ_{i≤m} log d_i`. On the increasing flank
+`Λ_m ≤ N/Λ_m`, so this equals `B_m`; bonds right of the center follow by
+mirror symmetry. ∎
+
+For `diamond(2,5)`: entropies `[1, log 6, log 24, log 24, log 6, 1] =
+[1, 2.585, 4.585, 4.585, 2.585, 1]` bits and waist rank 24 — exactly the
+measured values (finding 1), at MPS bond dimension 24 versus dense
+dimension 2880. The state that is *maximally* entangled across the waist is
+*cheap*: maximal entanglement under a geometric budget is small-rank by
+definition of the budget.
+
+**Necessity and the structure boundary (measured).** The budget is
+necessary as well as sufficient for the diamond's dynamics: a deep random
+cross-scale circuit is exact at `χ = 24` and degrades monotonically below
+it (finding 2). But the budget alone does not make long chains cheap — on
+the 25-site wave the mid-chain budget is astronomically large. What is
+measured there (findings 6, 7) is the classic tensor-network dichotomy:
+
+* a *structured* 62-gate cross-scale circuit (Fourier layers, mirror
+  couplings, valley and edge couplings spanning up to 24 sites, a
+  controlled-shift staircase) runs with zero truncation at `χ = 48`,
+  0.76 MB of parameters;
+* Haar-random brickwork on the same geometry blows through any fixed `χ`.
+
+Compressibility is a property of *structured multi-scale dynamics* on the
+geometry, not of the geometry alone — the boundary MERA draws between
+renormalizable and volume-law circuits, and the reason polynomially-bounded
+bond dimension implies classical simulability at all [1, 2, 3].
+
+
+## 3. Heterogeneous MPS mechanics
+
+This section fixes what the engine (`mps`) actually guarantees; readers
+familiar with MPS folklore can skim, but two points (the canonical-gauge
+truncation rule and the operator-Schmidt threading) carry real content.
+
+**Definition 3.1.** An MPS stores `|ψ⟩` as site tensors `T_i[l, p, r]`
+(left bond, physical, right bond) with per-site physical dimension `d_i`;
+`|ψ(x_0…x_{n−1})⟩`'s amplitude is the product of the matrices
+`T_i[·, x_i, ·]`. The *canonical-form invariant*: tensors strictly left of
+the orthogonality `center` are left-isometries, tensors strictly right are
+right-isometries, and the state's norm lives in the center tensor. Every
+public operation restores this invariant.
+
+**Why the gauge matters.** With a canonical environment, the singular
+values of the center's matricization *are* the Schmidt coefficients of the
+global state across that bond, so a local truncation is a globally optimal
+projection (Eckart–Young through an isometric embedding) [1]. Without it,
+freshly-contracted "raw" bond coordinates distort Schmidt weights, and a
+rank cap can slice through a degenerate subspace that carries real weight —
+a bug this library hit and now regression-tests. Hence the two operational
+rules implemented by `Mps::recompress`:
+
+1. **lossy truncation only against canonical environments**, and
+2. **cost control by sweep choreography** ("meet in the middle": shrink
+   bonds inward exactly from the cheap side first) rather than by early
+   lossy cuts, so no SVD ever runs at raw-product width on both sides.
+
+**Long-range gates (operator-Schmidt threading).** A two-site gate `G` on
+arbitrary sites `a < b` is decomposed across the operator bipartition
+`(a | b)`:
+
+```text
+G = Σ_{κ=1}^{K} A_κ ⊗ B_κ        (operator-Schmidt / SVD of the reshuffled G),
+```
+
+then applied as a width-`K` MPO: site `a` absorbs `A_κ` and opens a bond
+index `κ`, intervening sites pass `κ` through diagonally, site `b` closes
+it against `B_κ`; a two-pass (exact →, truncating ←) sweep over the window
+recompresses. This makes the zigzag's cross-scale couplings — pairs 24
+sites apart, unequal dimensions — ordinary operations. Correctness is
+cross-validated against the dense backend over random circuits including
+both orientations of long-range gates (`tests/backend_agreement.rs`).
+
+**Truncation accounting.** A `TruncSpec` is a pair (hard rank cap, relative
+discarded-weight cutoff). Every discarded Schmidt weight is tallied on the
+state (`discarded_weight`), with the retained part renormalized; exact runs
+report exactly 0. The tally is a per-truncation sum, not a global error
+bound — where exactness matters the library measures fidelity against a
+reference instead of trusting the tally.
+
+**Linear combinations.** `Mps::add` implements the direct-sum construction
+(bond dimensions add, then recompress). It looks like a utility; it is
+load-bearing: operator sums, traced boundaries, and rank-one dampers (§10)
+are all built on it.
+
+
+## 4. Hosted qubits: exact sub-simulation
+
+**Definition 4.1.** A site of dimension `d` *hosts* `κ(d) = ⌊log2 d⌋`
+qubits: levels `0 … 2^{κ}−1` are read as a big-endian `κ`-bit *register*,
+levels `≥ 2^κ` are *slack*. A qubit gate is *lifted* to the site by acting
+as itself on the register block and as the identity on slack
+(`embed::lift_register_gate`); two-qubit gates lift likewise, within a site
+or across two sites.
+
+**Proposition 4.2 (exactness).** Lifted gates are block-diagonal with
+respect to the (register ⊕ slack) decomposition of every site, blocks are
+preserved under products, and the restriction of a lifted circuit to the
+global register subspace equals the reference qubit circuit. Hence a state
+prepared in the register subspace stays in it (zero leakage), and the
+hosted computation is *exactly* recoverable — the binary system is a view
+into the qudit chain, not an approximation.
+
+*Proof.* Block-diagonality is by construction of the lift; products of
+block-diagonal operators are block-diagonal with multiplied blocks; the
+register blocks are, by construction, exactly the reference gates. ∎
+
+On `diamond(2,5)` the capacities are `1,1,2,2,2,1,1` — ten qubits in a
+2880-dimensional space, overhead `2880/1024 = 2.8125` (finding 3). Two
+readings are worth separating:
+
+* the valley sites *are* qubits — the binary sets on either flank of the
+  wave are literal, not encoded;
+* interior sites host one to two logical qubits each *plus slack*, and the
+  slack is not waste: it is the room into which the same site's algebra
+  extends when the chain is used as a qudit machine (§7–§8).
+
+**Bidirectional pairs.** Two gates realize the "pairing" language of §1:
+
+* `xswap(da, db)` exchanges the shared `min(da,db)`-dimensional subspaces
+  of two sites and fixes the rest — a permutation and an involution on the
+  shared subspace. For equal dimensions it is the full SWAP; for `(2, 5)`
+  it exchanges a physical qubit with the qubit-view of a 5-dit.
+* `qubit_bit_swap(d, t)` swaps a physical qubit with *bit `t`* of a host
+  register — a full SWAP on the embedded pair, identity on slack, and an
+  involution.
+
+The measured shuttle (finding 4) is then conjugation, nothing more: swap
+both edge qubits into the waist register, apply one coarse gate there
+(`F_4`, which on the register *is* the two-qubit QFT), swap back — equal to
+the direct two-qubit computation at fidelity 1. Its significance is
+semantic: a single `d = 5` site processes, in one native gate, a joint
+operation on two qubits that live 6 sites apart — "acting at multiple
+scales" is implemented by an exact isometric dictionary, not analogy.
+
+
+## 5. Scale morphing
+
+The representation itself can expand and collapse.
+
+**Proposition 5.1.** (i) `merge_sites(i)` — contracting neighbouring
+tensors into one site of dimension `d_i·d_{i+1}` with coarse index
+`p_i·d_{i+1} + p_{i+1}` — is exact: it is the associativity isomorphism
+`C^{d_i} ⊗ C^{d_{i+1}} ≅ C^{d_i d_{i+1}}` applied to the state.
+(ii) `split_site(i, d1, d2)` inverts it by an SVD refactoring, exact up to
+the state's truncation policy (a genuinely new bond appears, carrying the
+entanglement that was intra-site). (iii) Applying a coarse gate `G` between
+a merge and a split equals applying `G` as a two-site gate at the fine
+scale. (iv) Bond entropies at surviving cuts are invariant under merging —
+interior entanglement becomes intra-site structure and returns intact.
+
+*Proof.* (i), (iii), (iv) are immediate from the associativity reading: the
+state is unchanged as a vector in `H`; only the tensor factorization
+recorded in `dims` changes, and a two-site gate *is* a one-site gate on the
+fused factor. (ii) is the standard MPS split; exactness up to reported
+truncation is the SVD. ∎
+
+`promote_site` / `demote_site` move a single site up or down the dimension
+ladder in place — an isometric embedding (new levels unpopulated), and a
+projection that *reports its leakage* (the projected-out probability),
+respectively. Together with (i)–(ii) these give the library its
+"adaptive-geometry" surface: the profile is a dynamical variable, not a
+type parameter (finding 5: an entangled 8-qubit chain morphs to `[4,4,4,4]`
+to `[16,16]` and back at fidelity `1 − 10⁻¹³`, entropies identical at every
+scale; merge → `F_4` → split equals the four-gate qubit-scale QFT).
+
+
+## 6. Operators as states: the circuit-of-circuits layer
+
+**Definition 6.1 (Choi carrier, `mpo`).** An operator `U` on the chain is
+stored via vectorization (the Choi isomorphism [4]) as an ordinary MPS —
+the *carrier* — over the doubled chain whose site `i` has dimension `d_i²`,
+flattened index `p_out·d_i + p_in`. Read physically: each carrier site
+holds a (future, past) leg pair, so the operator is literally **a state
+stretched between the past boundary and the future boundary of a circuit
+block**, both boundaries being full `n`-site slices.
+
+Three consequences, all load-bearing:
+
+* **Operator entanglement.** The entanglement entropy of the *normalized*
+  carrier across bond `m` (`Mpo::operator_entanglement_bits`) is the
+  operator entanglement of `U` at that cut [5] — the width of the
+  correlation pipeline between past and future. For a unitary,
+  `‖U‖_F = √N`, and zero operator entanglement everywhere characterizes
+  product operators (e.g. the identity, or any diagonal phase ramp).
+* **Everything is MPS algebra.** Compilation absorbs each gate `G` as its
+  left-multiplication superoperator `G ⊗ I` on the doubled chain — so the
+  full heterogeneous machinery of §3, long-range gates included, compiles
+  circuits into blocks. Application to a state and composition of two
+  blocks are site-wise bond contractions followed by `recompress`; the
+  adjoint is a site-local leg swap plus conjugation; `add`, `scale`, and
+  the rank-one `basis_transfer` `|to⟩⟨from|` make the space of operators a
+  vector space with a computable basis of product operators.
+* **Scalar-invariant comparison.** `hs_fidelity(A, B) =
+  |tr(A†B)|² / (‖A‖²‖B‖²)` equals 1 iff `A = cB` — the workhorse equality
+  test for operators held as carriers.
+
+**The collapse principle.** Composition contracts two carriers and then
+recompresses; recompression computes the *intrinsic* bond profile of the
+product. Nothing forces a product to be as wide as its factors — and the
+central measured phenomenon of the `mpo`/`radix` layers (finding 9) is that
+a pipeline of blocks can collapse to something far simpler than its parts:
+
+```text
+QFT (χ up to 8)  ∘  ramp (χ = 1)  ∘  QFT† (χ up to 8)   →   adder (χ ≤ 4).
+```
+
+Composition-then-recompression is how the representation *does algebra*:
+the simplification `V† D_c V = X^c` is discovered numerically, not
+programmed. This is what "circuit of circuits" means operationally — a
+compiled block is a gate at the next scale up, and the algebra of blocks is
+executed by the same contraction machinery that executes gates.
+
+
+## 7. The tail-radix phase web
+
+The zigzag chain's ring `Z_N` carries a Fourier transform, and its
+factorization over the chain has a rigid — and, for compression, very
+fortunate — structure.
+
+**Theorem 7.1 (tail-radix factorization).** Write inputs in standard place
+value (`x = Σ x_i P_i`) and outputs in reversed place value
+(`y = Σ y'_j Q_j`). Let `D_{j,i} = d_j · d_{j+1} ··· d_i` for `j ≤ i` (the
+*radix segment product*). Then
+
+```text
+                     ┌ 1 / D_{j,i}          if j ≤ i
+  P_i · Q_j / N  =   │
+                     └ Π_{i<k<j} d_k  ∈ Z   if j > i ,
+```
+
+and therefore, modulo 1,
+
+```text
+  x·y/N  ≡  Σ_{j ≤ i}  x_i · y'_j / D_{j,i} ,
+```
+
+i.e. the DFT kernel `ω^{xy}` splits into pair couplings in which output
+digit `j` is phase-correlated **only with the tail of the register**
+(input sites `i ≥ j`), through the angle `2π/D_{j,i}`.
+
+*Proof.* For `j ≤ i` the index sets `{k < j}`, `{j ≤ k ≤ i}`, `{k > i}`
+partition `{0,…,n−1}`, so `N = Q_j · D_{j,i} · P_i`, giving the first case.
+For `j > i` the sets `{k > i}` and `{k < j}` cover everything and overlap
+exactly on `{i < k < j}`, so `P_i Q_j = N · Π_{i<k<j} d_k` — an integer
+multiple of `N`, hence a vanishing phase. Summing `x_i y'_j P_i Q_j / N`
+over all `(i, j)` and dropping integer terms gives the congruence. ∎
+
+**Circuit realization** (`radix::mixed_radix_qft_reversed`). One
+left-to-right pass: at site `j`, the local Fourier gate `F_{d_j}`
+(realizing the diagonal `j = i` term and creating the `y'_j` superposition),
+then fractional controlled phases `cp_frac` of angle `2π/D_{j,i}` from the
+now-output site `j` to each still-input site `i > j`. The pass structure
+works because couplings for output digit `j` involve only *unprocessed*
+sites. For uniform `d = 2` this is the textbook QFT circuit with
+bit-reversed output; Theorem 7.1 is its mixed-radix generalization, with
+the *radix segment product* replacing the power of two.
+
+**Corollary 7.2 (banding).** `D_{j,i} ≥ 2^{i−j+1}`, so coupling angles
+decay at least exponentially in site separation — a factor `d_k ≥ 2` per
+intervening site (on the wave, a factor 2–5). Dropping couplings below a
+threshold angle gives the approximate transform, with monotonically
+improving fidelity as the threshold tightens (tested); this is the
+mixed-radix analogue of the banded approximate QFT [6], and it is *why the
+web compresses*: the operator's long-range content is exponentially weak.
+
+**Where the width lives (measured).** Compiled over `Z_2880`, the reversed
+QFT block has bonds `[2,6,8,7,6,2]` — operator-cheap. The *digit reversal*
+`ρ` needed for standard output order is the expensive part: it is exactly
+the mirror-pair permutation of the zigzag (realized by the `xswap` network
+on a palindrome — the bowtie geometry is load-bearing in the chain's own
+Fourier transform), and it costs `χ = 36` on `diamond(2,4)`. The
+reversal-free convention keeps every block compact, and in the arithmetic
+pipeline below the reversal cancels between `V` and `V†` — it is never
+paid at all (finding 9, aside).
+
+**Fourier arithmetic.** The Draper ramp [7] is the diagonal block
+
+```text
+D_c = diag_y( e^{2πi·c·y/N} ) = ⊗_j diag_{y'_j}( e^{2πi·c·y'_j·Q_j/N} ),
+```
+
+a bond-1 product operator — and the factorization holds verbatim for
+**real** `c`, which is what makes the translation *flow* of §9 exact. The
+shift theorem `F† D_c F = X^c` (`X` the cyclic shift `|x⟩ → |x+1 mod N⟩`)
+then gives:
+
+**Proposition 7.3 (reversal-free adder).** With `V` the reversed-digit QFT
+and `D_c` the reversed-place ramp, `V† ∘ D_c ∘ V` is the exact modular
+adder `|x⟩ → |x + c mod N⟩` in standard digits, on **any** profile —
+palindromic or not.
+
+Composing the three blocks as MPOs collapses the pipeline (finding 9):
+adder bonds `[2,4,4,4,2,1]`, simpler than either Fourier factor. The
+family is closed and runs both ways (finding 10): `A_a ∘ A_b = A_{a+b}` —
+trivial as permutation algebra, but the measured content is
+*representational*: the bond profile stays flat (`χ ≈ 3`) across six
+self-compositions, i.e. the compact presentation is closed under the
+algebra, and conjugating back through the frame (`V A_c V†`) recovers the
+bond-1 diagonal ramp.
+
+### 7.4 The two budgets: rank and weight
+
+Finding 11 is the most consequential numerical lesson in the repository,
+and it deserves its precise statement. The adder is the permutation
+operator `A_c = Σ_x |x+c mod N⟩⟨x|`, with `‖A_c‖_F = √N`. Consider the
+single deepest-carry column, `|N−1⟩ → |c−1⟩` (for `c = 1`:
+`|N−1⟩ → |0⟩`), the one input whose carry ripples through every site.
+
+* **As spectral weight, it is invisible.** That column is one matrix
+  element out of `N`: its relative squared Frobenius weight is `1/N` —
+  `≈ 1.2·10⁻¹³` on the 25-site wave. Any *relative weight cutoff*
+  `ε > 1/N` (the standard MPS truncation policy, e.g. `ε = 10⁻¹²`)
+  licenses discarding it. In the Fourier route the same information rides
+  tail-radix couplings of angle `2π/N ≈ 7·10⁻¹³`, at the edge of what
+  accumulated `f64` roundoff can represent coherently. The measured
+  consequence: the Fourier-composed adder over `Z_{8.6·10¹²}` is
+  machine-accurate on typical inputs, has Hilbert–Schmidt fidelity
+  `1 − 10⁻⁹` with the exact adder — and maps `|N−1⟩` wrongly. *Average-case
+  operator fidelity is not worst-case operator fidelity*: HS distance is an
+  average over columns, and one wrong column costs only `~1/N` of it.
+
+* **As rank, it is free.** The hand-built carry MPO
+  (`radix::adder_mpo_exact`) holds the same operator at bond dimension 2 —
+  one classical carry bit riding the bond, 0/1 permutation tensors, exact
+  at any ring size. The deep-carry branch costs *no extra rank*.
+
+Hence the rule stamped into the code (`adder_mpo_exact`,
+`Transducer::to_mpo_with`, both of which canonicalize under an *exact*
+policy): **operators with semantically critical low-weight branches must be
+compressed by rank, never by weight.** Two independent budgets govern
+operator composition — entanglement (bond dimension) and spectral weight
+(floating-point precision) — and they fail in different places: rank fails
+on scrambling, weight fails on rare-but-exact arithmetic branches at
+`N ≳ 1/ε`.
+
+
+## 8. Stepwise cascades: machines on the bond
+
+**Definition 8.1 (transducer, `cascade`).** A *transducer* is a classical
+machine that sweeps the chain once in a fixed direction, carrying a
+*message* `m ∈ [0, M)` on the moving front; at site `i` it applies a
+deterministic local rule
+
+```text
+(message_in, digit_in) → (message_out, digit_out).
+```
+
+Lifted to an MPO, the message rides the virtual bond: the site tensor is
+the 0/1 tensor of the rule, and boundary vectors at the entry and exit ends
+implement a *boundary condition* `Boundary ∈ {Fixed(s), SumAll}` (a basis
+vector or the all-ones vector on the message bond).
+
+**Proposition 8.2 (lift).** (i) The lifted MPO has bond dimension `≤ M`
+at every interior cut. (ii) With entry `Fixed(s₀)` and exit `SumAll`
+("start in `s₀`, drop the final state"), the operator is the graph
+`Σ_x |f(x)⟩⟨x|` of the machine's global function `f`, and it is unitary iff
+`f` is a bijection. (iii) *(Measured refinement)* recompression generally
+finds bond dimensions strictly below `M` — the message alphabet is only an
+upper bound on the true width (Theorem 8.5 computes the true value).
+
+*Proof.* (i) by construction; (ii) determinism means each input basis state
+selects exactly one message path, so each column of the operator has a
+single 1; a 0/1 matrix with one 1 per column is `Σ|f(x)⟩⟨x|`, unitary iff
+`f` is injective. ∎
+
+This is the point where the crate's slogan becomes a definition: **bond
+dimension is the width of the classical information front.** (The reading
+of low-bond MPOs as weighted finite automata is classical [8]; the cascade
+layer runs the correspondence in reverse, *designing* the automaton and
+inheriting the operator.)
+
+Two arithmetic members generate everything else:
+
+* **Adder** (`m = 2`): rule `v = digit + c_i + carry`, output
+  `(v div d, v mod d)` — the bond-2 carry MPO of §7.4, rebuilt as a machine.
+* **Multiplier ×k** (`m = k`): rule `v = k·digit + carry`, output
+  `(v div d, v mod d)`. Here `(digit, carry) ↔ v ↔ (carry', digit')` is a
+  *bijection* `[0,d)×[0,k) ↔ [0,k)×[0,d)` at every site (both sides
+  enumerate `[0, kd)`), so the cascade is exactly the schoolbook
+  multiplication automaton; dropping the exiting carry is reduction
+  mod `N`, and the global map is `x ↦ kx mod N`.
+
+**Proposition 8.3 (the gcd obstruction, quantitatively).** Let
+`g = gcd(k, N)` and `A` the mult-cascade MPO. Then
+`unitarity_defect(A) := 1 − hs_fidelity(A†A, I) = 1 − 1/g`.
+
+*Proof.* `A = Σ_x |kx mod N⟩⟨x|`, so `A†A = Σ_{x,x'} [kx ≡ kx'] |x'⟩⟨x|` —
+the block-all-ones matrix over the fibers of `x ↦ kx`. Each nonempty fiber
+has exactly `g` elements (the kernel of ×k on `Z_N` has order `g`), and
+there are `N/g` fibers. Then `tr(A†A) = N` (diagonal pairs), and
+`‖A†A‖_F² = Σ_fibers g² = (N/g)·g² = Ng`. So
+`hs_fidelity(A†A, I) = N² / (Ng · N) = 1/g`. ∎
+
+Measured: `×6` on `Z_2880` (`g = 6`) has defect `0.833 = 1 − 1/6`, with the
+explicit collision `|0⟩, |480⟩ → |0⟩` (finding 17). Number theory is not an
+analogy here — it *is* an operator property, with the gcd read off a
+Frobenius norm.
+
+**Composition (measured, finding 15).** Cascades compose recursively —
+`×k₁ ∘ ×k₂ = ×(k₁k₂ mod N)` with composed and directly-built operators
+matching bond-for-bond, and adders braid with multipliers by the affine
+relation `×k ∘ (+c) = (+kc) ∘ ×k`. The cascade family therefore realizes
+the affine group `{x ↦ ax + b : gcd(a, N) = 1}` of the ring in compact
+presentations, and modular exponentiation (the Shor kernel [9]) is iterated
+cascade composition, with the *measured true operator width* the honest
+cost meter.
+
+### 8.4 The true width of a streamed permutation
+
+The message bound `M` and the geometric budget `B_m` are both upper bounds.
+The intrinsic width has an exact formula.
+
+**Theorem 8.5 (cut rank).** Fix a cut splitting the chain into left/right
+value groups: `x = a·S + b`, `a ∈ Z_L`, `b ∈ Z_S`, `N = L·S`. Let
+`gcd(k, N) = 1` and define the *crossing message*
+
+```text
+c(b) = ⌊ k·b / S ⌋ ,        Γ = { c(b) mod L : b ∈ [0, S) } .
+```
+
+Then the operator Schmidt rank of `M_k : |x⟩ → |kx mod N⟩` across the cut
+is exactly `|Γ|`. In particular `width ≤ min(k, L, S)`.
+
+*Proof.* Writing `kb = c(b)·S + (kb mod S)`,
+
+```text
+M_k |a, b⟩ = | (ka + c(b)) mod L ,  kb mod S ⟩ ,
+```
+
+so `M_k = Σ_{γ∈Γ} (X_L^γ · M_k^{(L)}) ⊗ (M_k^{(S)} · Π_γ)`, where `X_L` is
+the cyclic shift on the left group, `M_k^{(·)}` the local multipliers
+(bijections since `gcd(k, L) = gcd(k, S) = 1`), and `Π_γ` projects onto
+`{b : c(b) ≡ γ (mod L)}`. The left factors are linearly independent
+(`Σ_γ λ_γ X_L^γ M_k^{(L)} = 0` implies `Σ λ_γ X_L^γ = 0`, and the powers of
+`X_L` have disjoint supports); the right factors are nonzero with disjoint
+column supports, hence independent. The rank of `Σ_γ A_γ ⊗ B_γ` with both
+families independent is the number of terms. ∎
+
+**Corollary 8.6 (resonance — finding 16).** At the diamond's waist cut
+(`L = 24`, `S = 120`), for `k ≡ 1 (mod S)` — i.e. `k = aS + 1` — the
+crossing message is `c(b) = a·b`, so the width is `L / gcd(a, L)`. The
+repeated-squaring chain `7 → 49 → 2401 → 1921 (mod 2880)` gives:
+
+```text
+k        k mod S   crossing message         width
+7        7         ⌊7b/120⌋ ∈ {0..6}        7
+49       49        ⌊49b/120⌋ ∈ {0..48}      24   (= L: budget-capped)
+2401     1         20·b  mod 24             24/gcd(20,24) = 6
+1921     1         16·b  mod 24             24/gcd(16,24) = 3
+```
+
+— exactly the measured operator widths. **Multiplying by 1921 is a thinner
+operator than multiplying by 7.** The cost curve of modular exponentiation
+on a chain is number-theoretically resonant, non-monotone in `k`, and
+computable in advance from `gcd` data; the operator merely *remembers* it.
+
+The theorem also certifies narrowness where the message bound is
+astronomical: for `k' = 823 = 7⁻¹ (mod 2880)`, `823·7 = 48·120 + 1` makes
+`c(b)` periodic with period 7 up to multiples of 24, so `|Γ| = 7` — the
+inverse multiplier is intrinsically 7 wide at the waist, three orders below
+its own message bound. Which raises the question the dual machine answers:
+what *machine* attains that width?
+
+### 8.7 The geometrically opposed dual
+
+**Theorem 8.8 (division machine).** Let `gcd(k, N) = 1`. The transducer
+sweeping **MSB → LSB** with remainder state `r ∈ [0, k)` and site rule
+
+```text
+t = r·d + digit_in ;    digit_out = t div k ;    r' = t mod k
+```
+
+(a bijection `[0,k)×[0,d) ↔ [0,d)×[0,k)` via `t ∈ [0, kd)`), lifted with
+boundary conditions **entry `SumAll`, exit `Fixed(0)`**, is exactly the
+unitary `|x⟩ → |k⁻¹·x mod N⟩`, at message width `k`.
+
+*Proof.* Fix an entry remainder `r₀`. Sweeping most-significant-first, the
+machine performs schoolbook long division of the (mixed-radix) number
+`r₀·N + x` by `k`: the invariant after processing a prefix of value `X_p`
+with place-product `D_p` is `r = (r₀·D_p + X_p) mod k`, with the emitted
+digits encoding the partial quotient (each emitted digit is `< d` at its
+site since `t < kd`). At exit, the output value is `⌊(r₀N + x)/k⌋` and the
+exit remainder is `(r₀N + x) mod k`. The exit condition `Fixed(0)` keeps
+the branch iff `k | r₀N + x`; since `gcd(k, N) = 1`, for each `x` exactly
+one `r₀ ∈ [0, k)` satisfies `r₀ ≡ −x·N⁻¹ (mod k)`. The surviving branch
+outputs `y = (r₀N + x)/k < N` with `k·y ≡ x (mod N)`, i.e.
+`y = k⁻¹x mod N`. Formally, each fixed-boundary branch
+`T_{r₀} = ⟨0|_exit machine |r₀⟩_entry` is a partial isometry whose domain is
+the residue class `{x ≡ −r₀N (mod k)}` and whose image is the band
+`[r₀N/k, (r₀+1)N/k)`; the `k` domains and the `k` images each partition
+`Z_N`, so `Σ_{r₀} T_{r₀}` is the total bijection. ∎
+
+Three remarks make this the conceptual center of the cascade layer:
+
+* **The quantum boundary is the enabling ingredient — and it is virtual.**
+  A classical FSM must *choose* its initial state; this machine *enters in
+  superposition over the unknown wrap multiple* (`SumAll` = the all-ones
+  boundary vector) and is *postselected on exact division* (`Fixed(0)`).
+  No runtime postselection occurs: the assembled operator is exactly
+  unitary, because for every input precisely one branch survives the
+  contraction. The boundary conditions carve a unitary out of a sum of
+  partial isometries — linear algebra, not measurement.
+* **The width collapse is exponential.** The forward carry machine for
+  `×k⁻¹` needs message width `k⁻¹ mod N` — `823` on the diamond, `≈ 6·10¹²`
+  on the 25-site wave. The opposed remainder machine needs `k` — `7`. The
+  measured `÷7` bond profile realizes the intrinsic width that Theorem 8.5
+  certified (finding 18).
+* **Duality is geometric.** Multiplication's carries flow LSB → MSB;
+  division's remainders flow MSB → LSB, with the *same* state-set size. The
+  two fronts are opposed in direction and inverse in semantics.
+
+**Corollaries (all measured at fidelity 1, finding 18).**
+
+* *Annihilation:* `÷k ∘ ×k = 1` — the composed opposed fronts collapse to
+  the all-ones bond profile.
+* *Ratio machines:* `×(k₁k₂⁻¹ mod N) = ÷k₂ ∘ ×k₁` — two narrow opposed
+  fronts realize a single-front machine of astronomical width
+  (`×2357 = ÷11 ∘ ×7`, measured true width `[2,6,17,13,6,2]`).
+* *Reflection duality:* the digit complement `x_i ↦ d_i−1−x_i` maps
+  `x ↦ N−1−x` (since `Σ_i (d_i−1)P_i = Σ_i (P_{i−1} − P_i) = N−1`,
+  telescoping with `P_{−1} := N`), so negation is
+  `(+1) ∘ complement` — machine width 2 — and `×(N−k) = neg ∘ ×k` at width
+  `max(2, k)` instead of `N−k`.
+
+**The minimal-machine principle.** Operator Schmidt rank across a cut is
+intrinsic (Theorem 8.5 computes it for this family); every implementing
+machine upper-bounds it by its crossing-message alphabet; and recompression
+is the oracle that finds it. Every measured case in this family attains its
+intrinsic width through one of the geometric duals — sweep reversal or ring
+reflection. **The operator is only as wide as the narrowest machine that
+computes it**, and "find the dual machine" is the discrete analogue of
+choosing a better factorization route in §9.5.
+
+**Proposition 8.9 (Fourier conjugation reverses the cascade).** For
+`gcd(k, N) = 1`, `F M_k F† = M_{k⁻¹}` (the scaling theorem: from
+`M_k F |x⟩ = Σ_y ω^{xy}|ky⟩/√N = F|k⁻¹x⟩`). In the crate's reversed-digit
+frame `V = ρ∘F`, conjugation transports the multiplier to
+`ρ M_{k⁻¹} ρ` — the inverse multiplier *acting on the reversed encoding*,
+i.e. with its carry sweep running in the opposite direction. Verified on a
+non-palindromic chain (finding 17): the Fourier frame implements, in one
+stroke, both the arithmetic inversion and the geometric front reversal that
+§8.7 realizes combinatorially.
+
+
+## 9. Operator flows and the operation-width cursor
+
+Is an operation one object, or a divisible extent? The `flow` layer makes
+the question quantitative by extending blocks to one-parameter groups.
+
+**Definition 9.1 (`FourierFlow`).** For the adder family, define
+
+```text
+U^t := V† · D(t·c) · V ,      D(s) = diag_y( e^{2πi·s·y/N} )
+```
+
+(the real-`c` ramp of §7 makes `D(s)` exact for all real `s`). Since
+`D(s)D(t) = D(s+t)` exactly, `t ↦ U^t` is an exact one-parameter group,
+`U^0 = I`, `U^1 = A_c`; the group law and endpoints are verified at MPO
+precision (`U^{0.3} ∘ U^{0.7} = U^1` at `10⁻⁸`). `span(t₀,t₁) = U^{t₁−t₀}`
+— the flow is autonomous.
+
+A branch choice is being made here: `U^t = exp(it·c·H)` with
+`H = V†(2π ŷ/N)V` — the logarithm generated by the frame's number ramp.
+Other logarithms of `A_c` exist (rewind any phase winding by `2π`); this
+one is canonical for the frame and linear in `t`, which is what makes every
+snapshot cheap (two compositions through a fixed compiled `V`).
+
+**Proposition 9.2 (snapshot kernel).** `U^s` (shift extent `s = t·c`) is
+the circulant
+
+```text
+U^s = Σ_{j ∈ Z_N} w_j(s) · X^j ,     w_j(s) = (1/N) Σ_y e^{2πi(s−j)y/N}
+                                            = (1/N) · (e^{2πi(s−j)} − 1)/(e^{2πi(s−j)/N} − 1),
+```
+
+the periodic Dirichlet (sinc) kernel centred at `j = s`. At integer `s` it
+degenerates to the single shift `X^s`; between integers it is a genuinely
+delocalized superposition of shifts with `1/|j−s|` tails.
+
+*Proof.* `U^s = F†D(s)F` is diagonalized by the Fourier basis with symbol
+`e^{2πisy/N}`; its circulant coefficients are the inverse DFT of the
+symbol — a geometric sum. ∎
+
+This is the mechanism behind **finding 12 — width sees the integers**: at
+integer `s` the operator is a permutation whose exact presentation is the
+bond-2 carry MPO (measured `χ = 3`, the exact form plus compile residue at
+the working cutoff); at fractional `s` it is a coherent mixture of many
+shifts, and the measured width sits at `χ = 9–11` with operator
+entanglement peaking mid-flow. *Bond dimension along a flow is an
+arithmetic quantization detector*: `χ(U^t)` dips precisely where the
+operation extent is whole.
+
+**Proposition 9.3 (first-moment law — the lattice wobble).** Let
+`|ψ_t⟩ = U^t|x₀⟩` and `⟨ω^x⟩_t := Σ_x |ψ_t(x)|² ω^x` the circular first
+moment. Then, exactly,
+
+```text
+⟨ω^x⟩_t = ω^{x₀ + s} · ( (N−1) + e^{−2πis} ) / N ,        s = t·c .
+```
+
+*Proof.* Let `W = Σ_x ω^x |x⟩⟨x|` (clock) and `φ = F|x₀⟩`, i.e.
+`φ(y) = ω^{x₀y}/√N`. A direct computation gives `F W F† = S†` (the lowering
+shift on frequency space), and conjugating by the ramp,
+
+```text
+D(s)† S† D(s) = e^{2πis/N} ( S† + (e^{−2πis} − 1)|N−1⟩⟨0| ) :
+```
+
+the ramp phases cancel to a constant `e^{2πis/N}` on every step
+`y → y−1` *except at the wrap* `0 → N−1`, which acquires the anomalous
+factor `e^{−2πis}`. Sandwiching in `φ` (where `⟨φ|S†|φ⟩ = ω^{x₀}` and
+`⟨φ|N−1⟩⟨0|φ⟩ = ω^{x₀}/N`) yields the formula. ∎
+
+Consequences, all measured (finding 14): the extracted ring position is
+
+```text
+pos(t) = x₀ + s − sin(2πs)/2π + O(1/N) ,
+```
+
+— **linear drift plus a lattice wobble** `−sin(2πs)/2π`, of amplitude
+`1/2π` ring units *independent of `N`*: the ring's discreteness pushes back
+on the continuous flow through exactly one rank-one wrap term, vanishing at
+integer extents. Exact Weyl covariance would be wobble-free; the wobble
+*is* the failure of the ramp to be a character of the cyclic group at
+fractional `s`.
+
+**Proposition 9.4 (participation breathing).** With `τ` the fractional part
+of `s`, the participation `P(t) = Σ_x |ψ_t(x)|⁴` satisfies
+
+```text
+P(t)  →  1 − (2/3)·sin²(πτ)        (N → ∞),
+```
+
+so quarter-, half-, and whole-extent snapshots breathe as
+`1 → 2/3 → 1/3 → 2/3 → 1` — the measured values.
+
+*Proof sketch.* `|ψ_t(x)|² = sin²(πτ) / (N² sin²(πδ/N))` with
+`δ = x₀+s−x ≡ τ (mod 1)`. Summing fourth powers and using
+`Σ_{m∈Z} (m+τ)⁻⁴ = π⁴(3 − 2sin²πτ)/(3 sin⁴πτ)` (differentiate the
+cotangent series twice) gives the limit. ∎
+
+### 9.5 Imputation has geometry
+
+Splitting a coarse block into finer ones is not unique. Two measured routes
+factor the unit block `A = U^1` into halves (finding 13):
+
+* **geodesic**: `A = U^{1/2} · U^{1/2}` — midpoint on the flow, measured
+  `χ = 11` each (a delocalized Dirichlet kernel);
+* **causal**: `A = W₂ · W₁` with `W₁ = D(½)V`, `W₂ = V†D(½)` — detour
+  through the Fourier frame, measured `χ = 8` each (the frame's own core
+  width: multiplying by a diagonal cannot change bond dimension, so
+  `χ(W₁) = χ(V)`).
+
+Both products reproduce `A` at fidelity `1 − 10⁻⁹`, yet the two midpoints
+are measured as Hilbert–Schmidt orthogonal to six decimals. The precise
+statement is prettier than the idealized one:
+
+**Proposition 9.6 (Gauss-sum orthogonality of midpoints).** The normalized
+overlap of the two half-way operators is exactly
+
+```text
+hs_fidelity( U^{1/2} , W₁ )  =  |tr V|² / N² ,
+```
+
+independent of the ramp. For the plain DFT frame `tr F` is the quadratic
+Gauss sum (`|tr F|² = 2` for `N ≡ 0 mod 4`); for the reversed-digit frame
+`tr V = N^{−1/2} Σ_x ω^{x·ρ(x)}` is a twisted Gauss-type sum, measured
+`|tr V|² ≈ 0.0112` on `Z_2880`. Either way the overlap is `1/N²`-scale —
+the identity is verified numerically to six significant figures on
+`Z_2880`, where both sides equal `1.351·10⁻⁹`, printing as `0.000000`:
+the midpoints are *asymptotically*, not identically, orthogonal.
+
+*Proof.* `tr(U^{1/2†} W₁) = tr(V† D(−½) V · D(½) V)`. Cycling the trace and
+using `VV† = I` collapses it to `tr(D(−½) V D(½))`; the two diagonal ramps
+cancel pointwise on the diagonal, leaving `tr V`. Normalize by
+`‖U^{1/2}‖_F ‖W₁‖_F = N`. ∎
+
+The moral survives the refinement: decomposing a coarse operation into
+finer ones is a **choice of path through operator space** — routes with
+identical endpoints pass through essentially disjoint midpoints, at
+route-dependent width cost (here the causal detour is strictly narrower
+than the geodesic). "Width-optimal imputation" is thereby a well-posed
+optimization problem, posed concretely by this library (§12).
+
+### 9.7 The width cursor
+
+The `WidthCursor` holds a pipeline of flow segments `[t_0,t_1), [t_1,t_2), …`
+each as a collapsed MPO. `refine(i)` splits a segment at its midpoint,
+*imputing* both halves from the flow (consistent with the parent by the
+group law); `coarsen(i)` composes neighbours back into a wider block. The
+total composition is invariant under both — measured at fidelity
+`1.000000000` through four dyadic zoom levels (finding 14) — so the cursor
+maintains **adaptive temporal resolution**: a coarse past, an increasingly
+fine present, with the semantics pinned. `trajectory` then walks a state
+through the pipeline at its current grain; Propositions 9.3–9.4 are the
+laws that walk obeys, with exact relocalization at whole extent — the
+cursor's finest observable grain agrees with arithmetic exactly when the
+operation width is whole.
+
+
+## 10. Self-stabilizing boundary systems
+
+Sections 7–9 kept the message boundaries *open* (fixed entry, dropped or
+postselected exit). Closing the loop — feeding the exiting message back
+into the entry — is the third boundary regime, and it changes the category:
+the operator becomes non-unitary, and non-unitarity is precisely the
+resource an attractor needs (a unitary map preserves distances; nothing
+contracts, so nothing stabilizes).
+
+**Definition 10.1.** For a transducer `T` with message dimension `M`, the
+*looped* operator is `T_loop = Σ_{m<M} ⟨m|T|m⟩` — the partial trace over
+the message bond (`to_mpo_looped`).
+
+**Theorem 10.2 (closing the loop changes the arithmetic).** The looped
+adder is *end-around carry* — ones'-complement addition — computing
+`mod N−1`:
+
+* for `x + c ≤ N−2`: exactly the branch `m = 0` is consistent
+  (`m_out = 0`), giving `x + c`;
+* for `N ≤ x + c ≤ 2N−3`: exactly the branch `m = 1` is consistent,
+  giving `x + c + 1 − N = (x+c) mod (N−1)`;
+* for `x + c = N−1` (and the wrap image `2N−2`): **both** branches are
+  consistent, and the column contains the two representatives of zero —
+  `|N−1⟩` and `|0⟩` — in equal superposition (the *seam*).
+
+Likewise the looped multiplier computes `×k mod (N−1)` (from
+`kx + m = mN + r ⇒ r ≡ kx (mod N−1)`, with a unique consistent `m` except
+on the seam). On `diamond(2,5)` this replaces the highly composite ring
+`Z_2880` by the **prime field** `Z_2879`.
+
+*Proof.* Case analysis on the carry: with entry carry `m ∈ {0,1}` the open
+adder computes `x + c + m` with exit carry `m' = ⌊(x+c+m)/N⌋`; the loop
+keeps branches with `m = m'`. If `x+c ≤ N−2`, `m = 0` gives no overflow
+(`m' = 0` ✓) while `m = 1` gives `x+c+1 ≤ N−1 < N` (`m' = 0 ≠ 1` ✗). If
+`x+c ≥ N`, `m = 0` overflows (`m' = 1 ≠ 0` ✗) while `m = 1` yields
+`x+c+1−N ∈ [1, N−1]` with `m' = 1` ✓. At `x+c = N−1` both checks pass:
+`m = 0` gives `|N−1⟩` without overflow, `m = 1` gives `x+c+1 = N ⇒ |0⟩`
+with carry out 1. ∎
+
+This is a piece of classical computer arithmetic — the end-around-carry
+adder of ones'-complement machines — resurfacing as the trace of a quantum
+boundary, seam and all: ones' complement famously has "negative zero", and
+here it appears as an *operator defect* rather than an engineering nuisance.
+
+**Corollary 10.3 (the boundary heals the operator — finding 19b).** `×6` on
+`Z_2880` has `gcd = 6`, unitarity defect `1 − 1/6 = 0.833` (Prop. 8.3). The
+*same transducer looped* acts on `Z_2879`; since 2879 is prime,
+`gcd(6, 2879) = 1` and the traced operator is exactly unitary (measured
+defect `10⁻¹⁶`) away from the seam. No property of the local rules changed
+— the boundary alone selected a ring in which the obstruction does not
+exist.
+
+**Proposition 10.4 (the seam is a Jordan block — finding 19c).** The looped
+`+0` machine is exactly
+
+```text
+M = I + |0⟩⟨N−1| ,
+```
+
+a defective operator: eigenvalue 1 with a rank-one nilpotent part. Then
+`M^k = I + k·|0⟩⟨N−1|`, so iterating from the negative zero,
+
+```text
+M^k |N−1⟩ ∝ |N−1⟩ + k|0⟩ ,      1 − |⟨0|ψ_k⟩|² = 1/(k²+1)  exactly,
+```
+
+— polynomial self-stabilization of the number representation, with the
+measured error matching `1/(k²+1)` digit for digit. (Ordinary states are
+already fixed points; only the seam flows.) The normalized iteration
+`ψ → Mψ/‖Mψ‖` is power iteration, and a defective dominant eigenvalue is
+precisely the case where power iteration converges polynomially. A detail
+that explains the measured run lengths: the driver's stopping rule watches
+the *successive* overlap, and `1 − |⟨ψ_k|ψ_{k+1}⟩|² ≈ k⁻⁴` for this flow —
+so tolerance `10⁻¹²` halts near `k ≈ 10³` (measured: 1001) while the true
+error is then only `~10⁻⁶`.
+
+**Proposition 10.5 (the convergence law is designable — finding 19d).**
+Compose a *damped seam* — the bond-1 correction
+`I − (1−γ)|N−1⟩⟨N−1|`, built from `identity + basis_transfer·scale` — with
+the pump:
+
+```text
+M_γ = (I + |0⟩⟨N−1|)(I − (1−γ)|N−1⟩⟨N−1|) = I − (1−γ)|N−1⟩⟨N−1| + γ|0⟩⟨N−1| .
+```
+
+On the seam plane `span{|N−1⟩, |0⟩}` the spectrum is `{γ, 1}` — the Jordan
+block has been split into genuine eigenvalues — and in closed form
+
+```text
+M_γ^k |N−1⟩ = γ^k |N−1⟩ + γ(1−γ^k)/(1−γ) |0⟩ ,
+error ≈ ((1−γ)/γ)² · γ^{2k}      (exponential at amplitude rate γ).
+```
+
+Predicted steps to `10⁻¹²`: `≈ 20 / 10 / 6` at `γ = 0.5 / 0.2 / 0.05`;
+measured: `20 / 11 / 7` (the stopping rule detects settling one step after
+it happens). Self-stabilization is thus **engineered at the boundary, not
+inside the operator**: the loop chooses the ring (composite → prime,
+dissolving gcd obstructions), the seam supplies the attractor that repairs
+the representation, and a rank-one damper sets the convergence law —
+polynomial by default, exponential at a chosen rate.
+
+The taxonomy of boundary conditions, assembled:
+
+```text
+entry        exit         semantics
+Fixed(0)     SumAll       mod-N arithmetic (drop the wrap)          §8
+SumAll       Fixed(0)     postselected exact division = ×k⁻¹        §8.7
+looped (trace)            mod N−1 arithmetic + seam attractor       §10
+```
+
+One machine body, three operator categories — unitary arithmetic, unitary
+inverse arithmetic by dual sweep, and non-unitary dynamical system — all
+selected by vectors on a bond of dimension `k`.
+
+
+## 11. Numerical foundations
+
+The entire stack — complex arithmetic, RNG, QR, SVD — is in-crate and
+dependency-free, so every numerical claim above rests on ~900 audited lines
+(`c64`, `mat`). The design decisions that carry theory-level weight:
+
+* **One-sided Jacobi SVD**, chosen for verifiable robustness at the small
+  matrix sizes this library produces, with two hardening rules that matter
+  for tensor networks specifically:
+  1. *numerically null columns are frozen* before rotations grind them into
+     the denormal range (where Gram entries underflow and rotation
+     parameters turn to garbage, corrupting the *significant* subspace) —
+     the pathology arises structurally here, because low-rank states
+     threaded by MPOs produce matricizations with large null spaces
+     (regression: `long_range_gate_is_norm_preserving_with_null_bonds`);
+  2. *singular values below roundoff resolution are reported as exact
+     zeros* rather than normalizing rotation debris into fake directions.
+* **Truncation policy** (`TruncSpec`): a hard rank cap plus a *relative*
+  discarded-weight cutoff, with every discard tallied and the retained part
+  renormalized. Strongly rank-capped truncations of large matrices go
+  through a randomized range-finder (Halko-style, one power iteration [10])
+  whose unsampled weight is *charged to the discard tally* — approximation
+  is never silent.
+* **Canonical-gauge discipline** (§3): lossy operations only against
+  canonical environments; exact rank-revealing sweeps arranged
+  meet-in-the-middle so no SVD runs at raw-product width on both sides.
+* **Determinism**: SplitMix64 with fixed seeds; Haar unitaries by Ginibre +
+  two-round MGS QR with the phase fix [11]. Every experiment is
+  reproducible bit-for-bit.
+
+The epistemology of the crate follows from §7.4's lesson: *rank-side*
+guarantees (exact canonicalization, discard tallies) and *weight-side*
+guarantees (f64 phase resolution, relative cutoffs) are different
+promises, and the test suite exercises both — 88 tests, with every
+structural mechanism cross-validated against the dense ground-truth
+simulator and, where possible, against closed-form laws (Schmidt spectra,
+entropy values, moment laws, convergence rates) rather than against
+snapshots of its own output.
+
+
+## 12. Dictionary, and open problems
+
+The unifying observation of the library is that **one representation — an
+MPS over a heterogeneous chain — supports four semantic layers**, and that
+its bond dimension means something different, and true, in each:
+
+| layer | object | carrier | bond dimension reads as | boundary reads as |
+|---|---|---|---|---|
+| state | `\|ψ⟩` | MPS | entanglement across the cut (§2) | — |
+| block | circuit block `U` | Choi MPS on `d²` | operator entanglement: past↔future pipeline width (§6) | — |
+| machine | transducer | 0/1 MPO | width of the classical message front (§8) | drop = mod N; postselect = exact division; trace = mod N−1 |
+| flow | `t ↦ U^t` | MPO family | operation width — integer-quantized (§9) | — |
+
+and, orthogonally, that **number theory surfaces as operator properties**:
+
+```text
+gcd(k, N) = g            ↔   unitarity defect 1 − 1/g               (Prop 8.3)
+k mod S, gcd with L      ↔   operator width across the cut          (Thm 8.5)
+N − 1 prime              ↔   looped machine exactly unitary         (Cor 10.3)
+quadratic Gauss sums     ↔   near-orthogonality of imputations      (Prop 9.6)
+ones'-complement seam    ↔   Jordan block, 1/(k²+1) stabilization   (Prop 10.4)
+```
+
+with two independent budgets — geometric rank (Prop 2.1) and spectral
+weight (§7.4) — governing what any of it costs.
+
+Problems this document sharpens beyond the README's open directions:
+
+1. **The width function of multiplication.** Theorem 8.5 reduces
+   `k ↦ χ_cut(M_k)` to the counting problem `|{⌊kb/S⌋ mod L}|`. Its full
+   arithmetic structure (as `k` runs over a squaring orbit; extremal and
+   average behaviour over cuts of a wave) is open and looks like elementary
+   number theory with a payoff: an a-priori cost calculus for modular
+   exponentiation on chains.
+2. **Is the dual sweep always optimal?** Every measured operator in the
+   affine family attains its intrinsic width via one of the two geometric
+   dualities (sweep reversal, ring reflection). Conjecture: for streamed
+   permutations of `Z_N`, the minimum over {forward machine, opposed
+   machine, reflected machine} attains the cut rank. A counterexample would
+   be at least as interesting as a proof.
+3. **Flows beyond the shift family.** `FourierFlow` diagonalizes the adder
+   family in the frame `V`; fractional powers of `V` itself (a fractional
+   Fourier transform over `Z_N` as an MPO flow) require `V`'s eigenframe —
+   and would test whether "width sees structure" (finding 12) generalizes
+   from arithmetic quantization to frame quantization.
+4. **Width-optimal imputation.** Proposition 9.6 shows factorization routes
+   with identical endpoints and `O(1/N²)` mutual overlap; the causal route
+   beat the geodesic by `χ = 8` vs `11`. Characterize the minimal-width
+   path between `I` and a given block — a discrete geodesic problem in
+   operator space with bond dimension as the metric.
+5. **Exact finite-`N` breathing law.** Proposition 9.4 is asymptotic; the
+   finite-`N` participation of the Dirichlet kernel should admit a closed
+   form (the measured values match the limit to 4 digits already at
+   `N = 2880`).
+6. **The boundary-design calculus.** §10 exhibits three boundary regimes
+   with qualitatively different operator categories. A systematic theory —
+   which rings, attractors, and convergence laws are reachable by boundary
+   engineering alone, for a *fixed* transducer body — is wide open, and the
+   `stabilize` layer is the instrument built to explore it.
+
+
+## References
+
+[1] U. Schollwöck, *The density-matrix renormalization group in the age of
+matrix product states*, Ann. Phys. **326**, 96 (2011).
+
+[2] G. Vidal, *Efficient classical simulation of slightly entangled quantum
+computations*, Phys. Rev. Lett. **91**, 147902 (2003).
+
+[3] G. Vidal, *Entanglement renormalization*, Phys. Rev. Lett. **99**,
+220405 (2007); I. Markov and Y. Shi, *Simulating quantum computation by
+contracting tensor networks*, SIAM J. Comput. **38**, 963 (2008).
+
+[4] M.-D. Choi, *Completely positive linear maps on complex matrices*,
+Linear Algebra Appl. **10**, 285 (1975).
+
+[5] P. Zanardi, *Entanglement of quantum evolutions*, Phys. Rev. A **63**,
+040304(R) (2001).
+
+[6] D. Coppersmith, *An approximate Fourier transform useful in quantum
+factoring*, IBM Research Report RC 19642 (1994), arXiv:quant-ph/0201067.
+
+[7] T. G. Draper, *Addition on a quantum computer*,
+arXiv:quant-ph/0008033 (2000).
+
+[8] G. M. Crosswhite and D. Bacon, *Finite automata for caching in matrix
+product algorithms*, Phys. Rev. A **78**, 012356 (2008).
+
+[9] P. W. Shor, *Polynomial-time algorithms for prime factorization and
+discrete logarithms on a quantum computer*, SIAM J. Comput. **26**, 1484
+(1997); V. Vedral, A. Barenco, and A. Ekert, *Quantum networks for
+elementary arithmetic operations*, Phys. Rev. A **54**, 147 (1996).
+
+[10] N. Halko, P.-G. Martinsson, and J. A. Tropp, *Finding structure with
+randomness*, SIAM Review **53**, 217 (2011).
+
+[11] F. Mezzadri, *How to generate random matrices from the classical
+compact groups*, Notices Amer. Math. Soc. **54**, 592 (2007).

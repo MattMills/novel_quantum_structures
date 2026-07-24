@@ -3,6 +3,10 @@
 **Twisted zigzag qudit chains: a zero-dependency Rust laboratory for
 heterogeneous-dimension quantum structures.**
 
+> **[THEORY.md](THEORY.md)** derives the mathematics behind every finding
+> below — definitions, propositions, and proofs, each tied to the module
+> that implements it and the example that measures it.
+
 This library explores a question: what happens if a qudit chain's local
 dimension *expands and collapses* along the chain — qubit → qutrit → 4-dit →
 5-dit → back down — with **cross-scale couplings** that pair sites across the
