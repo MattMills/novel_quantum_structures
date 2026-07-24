@@ -31,7 +31,7 @@ vectors) is the *language* in which those questions become sharp.
 | 5 | scale morphing | `mps` | 5 |
 | 6 | operators as states | `mpo` | 9 (setup) |
 | 7 | the tail-radix phase web | `radix` | 8–11 |
-| 8 | stepwise cascades, duals, the atlas, the Shor kernel | `cascade`, `width`, `mpo` | 15–18, 20, 23 |
+| 8 | stepwise cascades, duals, the atlas, the Shor kernel, foreign rings | `cascade`, `width`, `mpo` | 15–18, 20, 23, 30 |
 | 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
 | 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
 | 11 | crossing strands, networks, the cutwidth law, and the RG wave | `crossing`, `network` | 24, 25, 26 |
@@ -1082,6 +1082,202 @@ stated with their honest scope:
   representation can be optimized toward directly (§13, the width-minimizing
   layout search).
 
+### 8.13 Foreign rings: the reduction penalty
+
+Everything §8 priced so far computes in the ring the chain itself
+carries — `Z_N`, `N = Π dᵢ` — or, through the closed boundaries of §10,
+its neighbours `N ∓ 1`. This section prices arithmetic in a ring the
+chain does *not* carry: the **foreign multiplier**
+
+```text
+  P_{k,M} : |x⟩ ↦ |k·x mod M⟩  (x < M),      |x⟩ ↦ |x⟩  (M ≤ x < N),
+```
+
+with `gcd(k, M) = 1` and `M ≤ N` — modular multiplication
+identity-extended to a permutation of the chain's own ring
+(`width::foreign_mult`). The question: what does `P_{k,M}` cost across a
+cut, relative to Theorem 8.5's native `M = N`?
+
+**The instrument.** Off the native family no counting theorem is known,
+so the rank is computed exactly from the definition
+(`width::perm_cut_rank`): across a cut `(L, S)` a permutation's
+reshuffled 0/1 matrix `R[(a′,a),(b′,b)] = [π(aS+b) = a′S+b′]` has the
+operator Schmidt rank as its matrix rank, and `rank R = rank R·Rᵀ` is
+read from the Gram matrix accumulated over the smaller side's distinct
+keys — `O(N)` arithmetic and one small SVD, no tensors. `R` is an
+integer matrix, so the null space is exact and the spectral gap at zero
+is clean; the instrument is pinned against Theorem 8.5 on the native
+family and against exactly-recompressed dense-Choi MPOs
+(`mpo::Mpo::from_permutation`) off it, in the `width` tests.
+
+**Proposition 8.15 (branch decomposition — the reduction bound).** For
+`gcd(k, M) = 1`, `M ≤ N`, `r·k < N`, and any cut,
+
+```text
+  osr(P_{k,M})  ≤  1 + 3·k·(k + 2).
+```
+
+*Proof.* Partition the non-identity domain `[0, M)` by the reduction
+count `q = ⌊kx/M⌋`, which takes at most `k` values (`x < M` gives
+`q ≤ k−1`). On branch `q` the map is affine *over the integers* — `x ↦
+kx − qM`, no wrap, image inside `[0, M) ⊆ [0, N)` — and its domain is an
+interval `I_q`. Extend the branch to the maximal interval on which the
+affine output stays in `[0, N)`: writing `x = aS + b` and `t = −qM`,
+
+```text
+  kx + t = (k·a + c(b))·S + b′,   c(b) = ⌊(kb + t)/S⌋,  b′ = (kb + t) mod S,
+```
+
+with `a′ = ka + c(b)` needing no reduction (the output is already below
+`N`). By the column argument of Theorem 8.5, the extended branch's rank
+is the number of distinct values of `c(b)` — a staircase of total rise
+`< k + 1`, so at most `k + 2` values. Restricting to `I_q` multiplies by
+the reshaped rank of an interval indicator, which is at most 3 (its rows
+are full, empty, or one prefix and one suffix). Operator Schmidt rank is
+submultiplicative under composition and subadditive over sums, and the
+identity tail on `[M, N)` adds 1. ∎
+
+**Measured — the square law.** The bound is loose by its constant but
+right in its shape: the foreign rank runs with the *square* of the
+message bound, not with the native width. At the diamond's waist
+(`(L, S) = (24, 120)`, cap `24² = 576`), against the generic modulus
+`M = 2867 = 47·61`:
+
+```text
+  k          2     3     5     7    11    13    17    23    29
+  native     2     3     5     7    11    13    17    23    24
+  foreign    7    14    34    62   141   193   316   560   576
+  (k+1)²     9    16    36    64   144   196   324   576   —
+```
+
+`foreign = (k+1)² − O(1)` until the squared geometric cap — against a
+random-permutation baseline of `573–574 ≈ 576`. Foreign reduction is
+maximally bidirectional: the reduction count is determined by the whole
+input yet corrects the low digits too, so the message must cross the cut
+both ways, and the two fronts multiply. Two structured discounts
+survive, both measured on the ladder `M = 2872 … 2879`: a divisor
+`gcd(M, N) = g` shared with the *right block* keeps the wrap correction
+`q·(N−M) mod S` in a small orbit, narrowing tail cuts (e.g.
+`M = 2874`, `g = 6`: tail `[36, 6, 2]` against `[36, 36, 4]` at
+`g = 1`); and moduli aligned with the chain are exceptions entirely:
+
+**Proposition 8.16 (screening).** If `M ≤ S` (the modulus fits inside
+the right block), then across that cut `osr(P_{k,M}) ≤ 2`.
+
+*Proof.* Every `x < M` has left digit block `a = 0`, so `P = I + Δ` with
+`Δ = |0⟩⟨0|_left ⊗ (π − I)_right` a product correction: `osr ≤ 1 + 1`. ∎
+
+(Measured: exactly 2 for `M = 97` at the waist.) Divisors of `N` whose
+co-factor is a prefix of the profile are the other exception: `x < M` is
+then a *condition on the top digit*, `P_{k,M}` is Proposition 8.11's
+controlled multiplier, and the cost is `w + 1` (measured: max 8 for
+`M = 1440, 720` — against 49+ one integer away at `M = 1439, 1441`).
+Foreign cost is a *straddling* cost, and it is the generic case.
+
+**Resonance does not transfer.** The atlas's resonant multipliers are
+native-frame objects, and the foreign rank forgets them completely:
+
+```text
+  k        native width     mod 2867     mod 2879
+  1921          3              576           49
+  961           3              325           36
+  1441          2              272           16
+  49           24              576          576
+```
+
+`×1921` — a width-3 operator in its own ring — pays the *full* squared
+cap at a generic foreign modulus. Compressibility of modular arithmetic
+is a relation between the modulus and the chain, not a property of the
+multiplier.
+
+**Observation 8.17 (the two-front-squared law at the boundary rings).**
+At `M = N ∓ 1` the foreign rank recovers exact structure. Let
+`k ≡ a·b⁻¹ (mod M)` with `a + b` minimal — the minimal opposed-front
+(meet-in-the-middle) machine of Proposition 8.12, whose open-boundary
+width is `a + b − 1`. Measured at the diamond's waist:
+
+```text
+  k mod 2879     7 = 7/1   1921 = 5/3   961 = 4/3   1441 = 3/2   1445 = 11/2   722 = 9/4
+  (a+b−1)²         49          49           36           16           144           144
+  measured         49          49           36           16           144           136
+```
+
+five exact and one *deficit* (`9/4`: 136 < 144 — the same
+number-theoretic slack the atlas shows below its caps), and on the far
+side `×1922 ≡ 4/3 (mod 2881)` measures `36 = (4+3−1)²` in the
+diminished-one encoding of Theorem 10.7. Reading: closing the ring runs
+the minimal machine *twice* — once as the message front, once as the
+superposed wrap count the trace sums over — so the boundary ring costs
+the square of the machine that the open chain runs once. The straight
+loop *attains* this intrinsic width bond-for-bond
+(`to_mpo_looped(×7)` has bonds `[4, 36, 49, 49, 36, 4]`, equal to the
+Gram rank of `×7 mod 2879` across every cut): for the boundary family,
+the machine model achieves the operator's intrinsic width — a positive
+answer, on this family, to the alphabet-gap question of §13.
+
+**Definition 8.18 (scaled loop, `to_mpo_looped_scaled`).** For a
+transducer `T` with message alphabet `[0, m′)` and a scale `r ≥ 1`, the
+*scaled loop* is `M = Σ_e ⟨e| T |r·e⟩`, summed over exits `e` with
+`r·e < m′` — the exiting message re-enters *multiplied by `r`*. The
+straight loop is `r = 1` on the native alphabet; the widened alphabets
+of `mult_wide` / `adder_wide` (closed under the carry rules for any
+`m′ ≥ k`, resp. `m′ ≥ 2`) exist to give the re-entry room:
+`m′ = r·k + 1` (mult), `m′ = r + 1` (adder).
+
+**Proposition 8.19 (the scaled loop computes mod `N − r`).** Let
+`base(x) = k·x` (or `x + c`), let `w = ⌊base(x)/N⌋` and
+`z = base(x) mod N` be the open machine's wrap and result, and let
+`r·(k+1) < N`. Branch `e` of the scaled loop contributes
+`|base(x) + r·e − e·N⟩` exactly when `⌊(base(x) + r·e)/N⌋ = e`. Then:
+
+(i) every surviving output is `≡ base(x) (mod N−r)` — since
+`N ≡ r (mod N−r)`, dropping `e` wraps and re-adding `r·e` is exact;
+
+(ii) only `e ∈ {w, w+1}` can survive: `e = w` iff `z < N − r·w`,
+`e = w+1` iff `z ≥ N − r·(w+1)`, so **at least one branch always
+survives** and exactly two survive on the `r`-wide window
+`N − r(w+1) ≤ z < N − r·w` — the **generalized seam**, an `r`-wide
+version of §10's double zero (both representatives of the same residue
+are emitted). With the full alphabet `r·k + 1` the top branch `e = k` is
+present, and the `r` non-canonical chain states `x ≥ N − r` map like
+their canonical partners `x − (N−r)`.
+
+*Proof.* (i) is the congruence above. (ii): survival of `e` demands
+`e·N ≤ base + r·e`, i.e. `e(N−r) ≤ base`, and `base + r·e < (e+1)N`;
+for `e ≤ w−1` the first inequality holds but the second fails
+(`base ≥ wN ≥ (e+1)N > (e+1)N − r·e`); for `e ≥ w+2` the first fails
+(`e(N−r) ≥ (w+2)(N−r) > base` when `r(k+1) < N`). The stated window is
+the overlap of the two surviving conditions. ∎
+
+The scaled loop is **mixed-radix pseudo-Mersenne reduction** — the
+`2ⁿ − r` moduli of Crandall/Solinas arithmetic, with `N = Π dᵢ` playing
+`2ⁿ` and the trace playing the hardware's end-around correction — as a
+pure boundary condition on an unchanged machine body. Verified
+amplitude-for-amplitude against the branch formula on `Z_72`
+(`cascade` tests), and measured on the diamond: traced `×7` at
+`r = 1, 2, 4` has bond profiles `[4,36,50,50,36,4]`,
+`[4,36,53,53,18,2]`, `[4,36,55,46,18,2]` — tracking the intrinsic
+foreign ranks (49, 54, 58) within the seam correction — with exactly
+`r` seam-doubled inputs each (the `r·k` doubling windows meet the
+`gcd(k, N)`-spread orbit of `k·x` in `≈ r` points). And the healing of
+Corollary 10.3 extends across the family: `×6`, 6-to-1 on `Z_2880`, is
+a bijection again mod `2873 = 2880 − 7 = 13²·17` (`gcd(6, 2873) = 1`),
+realized by the `r = 7` scaled loop at bonds `[4,36,42,42,36,4]` with 7
+seam-doubled inputs — boundary topology selecting, from one machine
+body, whichever nearby ring dissolves the obstruction.
+
+**The reachable neighbourhood, and the verdict.** Assembling §8 and
+§10: from a chain with ring `Z_N`, the moduli reachable at machine
+width are `N` itself (native, resonant width `w`), divisors of `N`
+aligned with the profile (controlled, `w + 1`), and the pseudo-Mersenne
+band `N − r` for small `r` (scaled loops, `≈ (two-front width)²`) with
+`N + 1` via the reversal twist. Everything else pays
+`≈ (k+1)²` per cut up to the squared geometric cap — and a
+cryptographic modulus, selected precisely for having no special form
+relative to anything, is the generic case by construction. The wave's
+cheap Shor kernel (§8.11) is a native-ring phenomenon; its cost model
+does not transfer to the moduli one would want to factor.
+
 ### 9.8 The frame flow: fractional powers of the QFT
 
 The first edition of this document (§13, problem 3) supposed fractional
@@ -1597,7 +1793,7 @@ dependency-free, so every numerical claim above rests on ~900 audited lines
 The epistemology of the crate follows from §7.4's lesson: *rank-side*
 guarantees (exact canonicalization, discard tallies) and *weight-side*
 guarantees (f64 phase resolution, relative cutoffs) are different
-promises, and the test suite exercises both — 125 tests, with every
+promises, and the test suite exercises both — 134 tests, with every
 structural mechanism cross-validated against the dense ground-truth
 simulator and, where possible, against closed-form laws (Schmidt spectra,
 entropy values, moment laws, convergence rates) rather than against
@@ -1652,7 +1848,12 @@ Problems this document sharpens beyond the README's open directions:
    factor > 8 — extreme case `×1441`, width 2 against alphabet 1439
    (§8.10). Open: a machine model whose construction alphabet meets the
    intrinsic width — multi-front sweeps, branching messages, or a
-   composition calculus with certified intermediate widths.
+   composition calculus with certified intermediate widths. *Partial
+   answer (finding 30):* on the boundary family the gap closes — the
+   straight loop's bond profile equals the intrinsic rank of its
+   operator bond-for-bond (§8.13, Observation 8.17); the open question
+   is now whether that width-optimality of the trace extends to every
+   scaled loop and every twist.
 3. **Flows beyond finite-order frames.** For the standard-order QFT the
    problem dissolved: `F⁴ = I` makes `F^t` an exact four-term operator
    combination, no eigenframe needed (Proposition 9.7, finding 22). The
@@ -1674,13 +1875,17 @@ Problems this document sharpens beyond the README's open directions:
 6. **The boundary-design calculus.** §10 now exhibits *four* boundary
    regimes, and the twist axis is partly mapped: the identity and reversal
    twists yield mod `N−1` and mod `N+1` arithmetic (Theorem 10.7,
-   finding 21). Open: the remaining twists (a general `σ` mixes affine
-   branches over different domains — what algebra do they generate?),
-   weighted and partial traces interpolating open ↔ closed, and *coupled*
-   loops feeding one machine's exit into another's entry. Which rings,
-   attractors, and convergence laws are reachable by boundary engineering
-   alone, for a fixed transducer body, remains wide open — but the
-   instrument set now includes the twist.
+   finding 21), and the *scaled* re-entry `e ↦ r·e` yields the whole
+   pseudo-Mersenne band mod `N−r` (§8.13, Proposition 8.19 — the affine
+   sub-family of the twist algebra, solved). Open: the remaining twists
+   (a general `σ` mixes affine branches over different domains — what
+   algebra do they generate, and is any modulus beyond the `N−r` band
+   and `N+1` reachable?), weighted and partial traces interpolating
+   open ↔ closed, and *coupled* loops feeding one machine's exit into
+   another's entry. Which rings, attractors, and convergence laws are
+   reachable by boundary engineering alone, for a fixed transducer body,
+   remains wide open — but the instrument set now includes the twist and
+   the scale.
 7. **Networks of strands.** §11.8 settles the two-strand question into a
    law — the cost of a crossing network is its coupling graph's cutwidth
    (Theorem 11.9, finding 25) — and confirms the area law for a woven
@@ -1700,6 +1905,19 @@ Problems this document sharpens beyond the README's open directions:
    fermionic or frustrated couplers on a weave, and whether any crossing
    network with a genuinely two-dimensional coupling graph can dodge the
    area law through the heterogeneity of the dimension wave.
+8. **The foreign-rank function.** §8.13 prices arbitrary permutations
+   exactly (`perm_cut_rank`) but by computation, not counting: the closed
+   form for `osr(×k mod M)` across a cut — the two-dimensional analogue
+   of problem 1's `|{⌊kb/S⌋ mod L}|`, with the reduction count as a
+   second staircase — is open, as is the deficit structure of the
+   two-front-squared law (`9/4 → 136` against `(9+4−1)² = 144`: which
+   rational representations fall short of the square, and by what
+   arithmetic?), the exact seam-census law (measured `= r` on the
+   diamond; the heuristic is the `r·k` doubling windows meeting the
+   spread orbit of `k·x`), and the encoding question — diminished-one
+   reaches `N+1`; does any linear encoding reach `N+r` for `r ≥ 2`, or
+   is the reachable neighbourhood exactly `{divisors} ∪ [N−r band] ∪
+   {N+1}`?
 
 
 ## References

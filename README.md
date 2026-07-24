@@ -131,8 +131,8 @@ renormalization:
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
 | `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total); `FrameFlow` — fractional powers of the **QFT itself** as the four-term projector combination `F^t = Σ c_m(t)·F^m` (`F⁴ = I`), no eigensolver needed |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
-| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`) and **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`, completing the ring family `N−1 / N / N+1`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
-| `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs |
+| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`), **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`) and **scaled loops** (`to_mpo_looped_scaled` on the widened alphabets `mult_wide`/`adder_wide` — the exiting wrap re-enters ×`r`, selecting mod `N−r`: the whole mixed-radix **pseudo-Mersenne band**), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs; and the **foreign-rank instrument** (`perm_cut_rank` — exact operator Schmidt rank of *any* permutation of `Z_N` across every cut, via a Gram matrix on the small side; `foreign_mult` — arithmetic in rings the chain does not carry) |
 | `crossing` | **crossing dimension-wave strands**: two waves sharing one MPS, crossed pairwise into an X (`antiparallel`) or ladder (`parallel`) and coupled at a chosen dimension level; `Layout::{Block, Interleaved}` — the A|B entanglement is one bond in Block, a `≤ hi` near-product in Interleaved (a ~1000× cost knob for the same state) |
 | `network` | **networks of crossing strands**: `K` strands and any coupling graph, with the law that MPS cost = `d^cutwidth`; `bundle` (one direction, `χ = hi` for any `K`), `overlay` (two directions on a pair, `(hi−1)²`), `weave`/`wave_weave` (a 2D lattice — area law `d^min(rows,cols)`); GHZ and cluster graph-state couplers |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
@@ -543,6 +543,53 @@ it prices the operator in space — the operative window is a two-dimensional
 resource (aperture `W` × width `χ`), and the architecture's move is to keep
 large apertures at small width. (`mpo`, `operative_window`)
 
+**30. Foreign rings: leaving the native ring squares the cost, and the
+boundary family is the only discount.** The chain's cheap arithmetic is
+*ring-native*. A new instrument — `width::perm_cut_rank`, the exact
+operator Schmidt rank of **any** permutation of `Z_N` across every cut
+(a Gram matrix on the small side of the cut; no tensors; pinned against
+the atlas on the native family and against dense-Choi MPOs,
+`Mpo::from_permutation`, off it) — prices `×k mod M` identity-extended
+to the chain. Native `×7` costs its resonant width 7; **foreign**
+`×7 mod M` costs ≈ 62 at the diamond's waist for every generic `M`, and
+a k-sweep pins the law: foreign rank `= (k+1)² − O(1)` up to the squared
+geometric cap `576 = 24²` — the **square** of the message bound (the
+reduction count must cross the cut both ways, and the two fronts
+multiply; provable upper bound `3k(k+2)`, THEORY Prop 8.15) — far above
+native, far below the random-permutation baseline 573. **Resonance does
+not transfer**: `×1921` (native width 3) pays the full cap 576 at a
+generic modulus — resonance is a relation between multiplier, modulus,
+and chain, not a property of the operator. The exceptions are exactly
+the *reachable neighbourhood*: divisors of `N` aligned with the profile
+(controlled arithmetic, `w + 1` — measured max 8 at `M = 1440, 720`
+against 50–58 one integer away), moduli inside one block (screened,
+rank 2: foreign cost is a *straddling* cost), and the boundary rings,
+where the law sharpens to number theory: `rank(×(a·b⁻¹) mod N∓1) =
+(a+b−1)²` — **the square of the minimal opposed-front machine** of
+finding 27 — verified for `7/1, 5/3, 4/3, 3/2, 11/2` on `Z_2879` and
+`4/3` on the diminished-one `Z_2881`, with one measured deficit
+(`9/4 → 136 < 144`, the atlas's resonance-slack reappearing one level
+up). Closing the ring runs the minimal machine twice — once as the
+message, once as the superposed wrap count — and the straight loop
+*attains* it: `to_mpo_looped(×7)` bonds equal the intrinsic rank
+bond-for-bond, closing the alphabet gap (THEORY §13, problem 2) for the
+boundary family. The **scaled loop** makes the family constructive
+(`Transducer::to_mpo_looped_scaled` on the widened alphabets
+`mult_wide`/`adder_wide`): re-entering the exiting wrap `w` as carry
+`r·w` computes **`×k mod (N−r)` exactly** — mixed-radix pseudo-Mersenne
+(Crandall) reduction as a pure boundary condition — verified
+amplitude-for-amplitude against its branch formula, with an `r`-wide
+seam generalizing finding 19's double zero (census: exactly `r`
+seam-doubled inputs each for `r = 1, 2, 4, 7`) and the healing story
+extended across the band: `×6` (6-to-1 on `Z_2880`) is a bijection
+again mod `2873 = 13²·17` via the `r = 7` loop. The verdict for the
+Shor thread: a cryptographic modulus — chosen precisely to have no
+special form — is the generic case by construction, saturating the
+squared budget; **the wave's cheap Shor kernel does not transfer to the
+moduli one would factor**. (`width::perm_cut_rank`,
+`cascade::Transducer::{mult_wide, adder_wide, to_mpo_looped_scaled}`,
+`mpo::Mpo::from_permutation`, `foreign_rings`)
+
 ## Quick start
 
 ```rust
@@ -583,7 +630,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 125 tests, dense-vs-MPS cross-validation
+cargo test                                   # 134 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -604,6 +651,7 @@ cargo run --release --example complexity_census
 cargo run --release --example meet_in_the_middle
 cargo run --release --example resource_efficiency
 cargo run --release --example operative_window
+cargo run --release --example foreign_rings
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -611,7 +659,7 @@ No dependencies; builds with any reasonably recent stable Rust.
 ## Design notes
 
 * **Verification-first.** Every mechanism is cross-checked against the exact
-  dense simulator on small chains (125 tests), including randomized circuits
+  dense simulator on small chains (134 tests), including randomized circuits
   over both orientations of long-range gates, canonical-form invariance, and
   analytic entropy values.
 * **In-crate numerics.** The SVD is a one-sided Jacobi with two
@@ -643,7 +691,16 @@ No dependencies; builds with any reasonably recent stable Rust.
   coherent readout — a full QFT over a *hosted control register* (the
   wave's valley qubits, finding 3) instead of the semiclassical single
   qubit — and order finding on the 25-site wave, where the atlas already
-  prices the `C-U` family over `Z_{8.6·10¹²}`.
+  prices the `C-U` family over `Z_{8.6·10¹²}`. (Finding 30 bounds the
+  scope honestly: all of this is native-ring arithmetic; foreign moduli
+  pay the squared budget.)
+* **The foreign-rank function.** Finding 30 prices arbitrary permutations
+  exactly (`perm_cut_rank`) and measures the square law and its
+  boundary-ring refinement `(a+b−1)²`; open (THEORY §13, problem 8): the
+  closed form (a second staircase joins the cut-rank count), the deficit
+  structure (`9/4 → 136`), the exact seam-census law, general twists σ
+  beyond `e ↦ r·e`, and whether any encoding beyond diminished-one
+  reaches moduli past the `N−r` band.
 * **`xswap` as a disentangler.** For mirror-symmetric correlations the
   subspace exchange can relocate entanglement toward the waist before
   truncation — a MERA-style disentangler adapted to the wave. The
