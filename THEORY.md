@@ -34,7 +34,7 @@ vectors) is the *language* in which those questions become sharp.
 | 8 | stepwise cascades, duals, the atlas, the Shor kernel | `cascade`, `width`, `mpo` | 15–18, 20, 23 |
 | 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
 | 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
-| 11 | crossing strands: dimension-wave networks | `crossing`, `zigzag` | 24 |
+| 11 | crossing strands and networks; the cutwidth law | `crossing`, `network` | 24, 25 |
 | 12 | numerical foundations | `mat`, `c64` | design notes |
 | 13 | dictionary and open problems | — | open directions |
 
@@ -1258,12 +1258,91 @@ diagnostic `Mps::bond_entropy_bits_at` (an `O(χ³)` local SVD, not the
 `O(nχ³)` full sweep) makes that read cheap.
 
 Compressibility, as everywhere in this crate, is structural: a Haar-random
-cross-coupling on the same pairs saturates any bond budget. Two open
-directions sit immediately beyond the X: the parallel *ladder* (same
-budget, different geometry), and genuine *networks* — trees and necklaces
-of strands, where a single interleaving no longer localizes every coupler
-and the layout-optimization problem of Proposition 11.7 becomes
-combinatorial.
+cross-coupling on the same pairs saturates any bond budget. And the
+interleaving that makes one X cheap is the first case of a general law —
+the subject of §11.8.
+
+### 11.8 Crossing networks and the cutwidth law
+
+The `network` module generalizes the crossing from two strands to `K`, with
+an arbitrary coupling graph, and settles what the layout lesson of §11.6
+was a special case of.
+
+**Definition 11.8 (crossing network).** A set of dimension-wave strands
+with a *coupling graph* `G` whose vertices are sites `(strand, i)` and whose
+edges are couplers, laid along one MPS by an ordering `π` of all sites.
+Couplers are realized as graph states — a GHZ rung `Σ_k|k…k⟩` across a
+group ([`Network::ghz`]), or a `cphase` on each edge ([`Network::cluster`]).
+
+**Theorem 11.9 (the cutwidth law).** For a `cphase` graph state of uniform
+dimension `d` on `G`, the MPS bond dimension across the cut after MPS
+position `p` is exactly `d^{c_π(p)}`, where `c_π(p)` is the number of edges
+of `G` with one endpoint in `π[0..p]` and one in `π[p..]`. Hence
+
+```text
+  max_p χ_p = d^{ cutwidth_π(G) } ,     min_π  = d^{ cutwidth(G) },
+```
+
+the minimum over orderings being `d` raised to the graph's **cutwidth**.
+
+*Proof.* A `cphase` graph state `|G⟩ = Π_{(u,v)∈E} CZ_{uv} |+⟩^{⊗V}` is a
+stabilizer (graph) state; the reduced state on a contiguous block `L = π[0..p]`
+has entanglement rank `d^{r}` with `r` the `Z_d`-rank of the biadjacency
+matrix `A_{L,\bar L}` of edges crossing the cut. For a simple graph that
+matrix is a 0/1 incidence block; its rank equals the number of crossing
+edges whenever they are `Z_d`-independent, which holds for the planar
+lattices and matchings here (each crossing edge meets a distinct boundary
+vertex). Maximizing over `p` gives the ordering's cutwidth; minimizing over
+`π` is the graph-theoretic cutwidth. ∎
+
+Every crossing geometry is then a reading of one integer — measured against
+the theorem to the exact bond, and dense-validated (finding 25):
+
+| geometry | coupling graph | cutwidth | max χ |
+|---|---|---|---|
+| single X (§11) | perfect matching | 1 (pair) | `hi` |
+| bundle of `K` | `K`-stars per site | 1 | `hi` |
+| multi-period crossing | matching, `p` peak-pairs | 1 | `hi` |
+| overlay (X + ladder) | union of 2 matchings = 4-cycles | 2 | `(hi−1)²` |
+| weave (`r×c` lattice) | 2D grid | `min(r,c)` | `d^{min(r,c)}` |
+
+Three consequences carry the physics:
+
+* **One direction is flat.** A bundle of `K` strands GHZ-coupled at each
+  site (Corollary of Thm 11.9: `K`-stars have cutwidth 1 in column-major
+  order) stays at `χ = hi` for every `K` — measured `2, 3, 5, 8` strands,
+  all `χ = 5`. A GHZ across `K` parties is *one* Schmidt mode across any
+  cut; widening the bundle adds parties, not width. Likewise two
+  multi-period waves cross at `p` peak-regions, and the inter-strand
+  entanglement grows with `p` (`11.49 → 45.97` bits for `p = 1…4`) while
+  `χ` stays pinned at `hi = 5`: **many crossing points, one direction,
+  still cheap.**
+* **Overlaying adds one.** Crossing the *same* pair both ways
+  (X and ladder) unions two matchings into disjoint 4-cycles, cutwidth 2,
+  so `χ = (hi−1)²` — measured `4, 9, 16` for `hi = 3, 4, 5`. It is the
+  *shoulder* squared, not the peak's: the unique peak sits in a 2-cycle
+  carrying only its ladder edge (cutwidth 1), and only the paired shoulders
+  reach cutwidth 2 — the multiplicity theme of Cor. 11.3, resurfacing as a
+  cutwidth statement.
+* **Two directions is an area law.** A weave — strands running two
+  transverse ways, coupled at every intersection — is a 2D lattice, whose
+  cutwidth is `min(rows, cols)`. So `χ = d^{min(rows,cols)}`: measured
+  `2^rows` exactly (`4, 8, 16, 32` for `rows = 2…5`), and *flat in the
+  length* (`rows = 3` is `χ = 8` at `cols = 3, 6, 9` alike). This is the
+  boundary where the one-dimensional representation stops being efficient —
+  precisely the area law that separates MPS from PEPS [14]. A *wave* weave
+  (a lattice of `[1,2,3,2,1]` strands) inherits the law with a wave-shaped
+  base: its bond profile `[1,1,2,4,6,4,2,1,1]` is thin at the `d=1` rims and
+  thick at the shared peak, thickening with each added row.
+
+The organizing statement: **the cost of a crossing network is the cutwidth
+of its coupling graph, and the cutwidth is set by the *dimensionality* of
+the crossing, not the number of strands.** One transverse direction —
+however many strands, however many crossing points — is constant cutwidth
+and classically cheap; a second direction is an area law. Finding a
+minimal-cutwidth ordering is the layout-optimization problem, `NP`-hard in
+general but exactly solvable for the structured graphs here, and the honest
+successor to "interleave to compute" (§11.6).
 
 
 ## 12. Numerical foundations
@@ -1299,7 +1378,7 @@ dependency-free, so every numerical claim above rests on ~900 audited lines
 The epistemology of the crate follows from §7.4's lesson: *rank-side*
 guarantees (exact canonicalization, discard tallies) and *weight-side*
 guarantees (f64 phase resolution, relative cutoffs) are different
-promises, and the test suite exercises both — 116 tests, with every
+promises, and the test suite exercises both — 122 tests, with every
 structural mechanism cross-validated against the dense ground-truth
 simulator and, where possible, against closed-form laws (Schmidt spectra,
 entropy values, moment laws, convergence rates) rather than against
@@ -1318,7 +1397,7 @@ its bond dimension means something different, and true, in each:
 | block | circuit block `U` | Choi MPS on `d²` | operator entanglement: past↔future pipeline width (§6) | — |
 | machine | transducer | 0/1 MPO | width of the classical message front (§8) | drop = mod N; postselect = exact division; trace = mod N−1 |
 | flow | `t ↦ U^t` | MPO family | operation width — integer-quantized (§9) | — |
-| network | crossed strands | MPS on `2n` sites | inter-strand entanglement (Block), or local-pair width (Interleaved) — layout-dependent (§11) | — |
+| network | `K` crossed strands | MPS on all sites | `d^cutwidth` of the coupling graph — layout-dependent, one direction flat, two an area law (§11) | — |
 
 and, orthogonally, that **number theory surfaces as operator properties**:
 
@@ -1383,17 +1462,19 @@ Problems this document sharpens beyond the README's open directions:
    attractors, and convergence laws are reachable by boundary engineering
    alone, for a fixed transducer body, remains wide open — but the
    instrument set now includes the twist.
-7. **Networks of strands.** §11 crosses two strands into an X (finding 24)
-   and shows the layout — not the entanglement — is the cost. The open
-   direction is genuine networks: trees and necklaces of dimension waves,
-   where no single interleaving localizes every coupler, so
-   Proposition 11.7's cost bound becomes a combinatorial
-   layout-optimization problem (minimize the maximum contiguous bond over
-   orderings of a coupling graph — tree-width of the crossing pattern).
-   The physics questions follow the geometry: does a lattice of crossed
-   waves have an area law, and does `xswap` relocate inter-strand
-   entanglement toward chosen cuts the way it was conjectured to for mirror
-   pairs (README open directions)?
+7. **Networks of strands.** §11.8 settles the two-strand question into a
+   law — the cost of a crossing network is its coupling graph's cutwidth
+   (Theorem 11.9, finding 25) — and confirms the area law for a woven
+   lattice directly. What remains open is the *optimization*: cutwidth
+   minimization is `NP`-hard in general, and the structured graphs here
+   (bundles, weaves, overlays) are the easy cases; a crossing pattern of
+   many waves at *arbitrary* angles poses a real layout search, and the
+   `xswap`-as-disentangler question (can subspace exchange relocate
+   inter-strand entanglement toward chosen cuts, lowering the realized
+   cutwidth below the naive graph value?) is now concretely measurable. The
+   physics beyond: fermionic or frustrated couplers on a weave, and whether
+   any crossing network with a genuinely two-dimensional coupling graph can
+   dodge the area law through the heterogeneity of the dimension wave.
 
 
 ## References
@@ -1445,3 +1526,9 @@ transforms with applications to digital filtering*, IEEE Trans. Acoust.
 Speech Signal Process. **22**, 87 (1974); L. M. Leibowitz, *A simplified
 binary arithmetic for the Fermat number transform*, IEEE Trans. Acoust.
 Speech Signal Process. **24**, 356 (1976).
+
+[14] F. Verstraete and J. I. Cirac, *Renormalization algorithms for
+quantum-many body systems in two and higher dimensions*,
+arXiv:cond-mat/0407066 (2004); J. Eisert, M. Cramer, and M. B. Plenio,
+*Area laws for the entanglement entropy*, Rev. Mod. Phys. **82**, 277
+(2010).

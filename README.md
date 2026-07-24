@@ -65,13 +65,17 @@ modular exponentiation, phase estimation on one reused valley qubit,
 order recovery by continued fractions — priced bond-for-bond in advance
 (finding 23).
 
-And the first step past a single chain: **crossing strands**. Two
-dimension waves `[1,2,3,4,5,4,3,2,1]` laid antiparallel into an X,
-coupled where their dimensions match — and *which* level (5, 4, 3, 2, 1)
-carries the coupling turns out to select the entanglement geometry: the
-shoulder injects more than the peak, the pinch nothing, and the whole
-thing's cost is a choice of site ordering, not a property of the physics
-(finding 24).
+And the first steps past a single chain: **crossing strands** and
+**networks**. Two dimension waves `[1,2,3,4,5,4,3,2,1]` laid antiparallel
+into an X, coupled where their dimensions match — and *which* level (5, 4,
+3, 2, 1) carries the coupling selects the entanglement geometry: the
+shoulder injects more than the peak, the pinch nothing, and the cost is a
+choice of site ordering, not a property of the physics (finding 24). Push
+to many strands and arbitrary coupling graphs and one law organizes all of
+it — the cost is the graph's **cutwidth**: one crossing direction is flat
+(bundles, multi-period crossings stay `χ = hi` however many strands or
+crossing points), a second is an area law (a woven lattice is
+`χ = d^min(rows,cols)`) — the MPS/PEPS boundary, measured (finding 25).
 
 ```text
   5           ●                 ●
@@ -127,6 +131,7 @@ renormalization:
 | `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`) and **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`, completing the ring family `N−1 / N / N+1`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
 | `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs |
 | `crossing` | **crossing dimension-wave strands**: two waves sharing one MPS, crossed pairwise into an X (`antiparallel`) or ladder (`parallel`) and coupled at a chosen dimension level; `Layout::{Block, Interleaved}` — the A|B entanglement is one bond in Block, a `≤ hi` near-product in Interleaved (a ~1000× cost knob for the same state) |
+| `network` | **networks of crossing strands**: `K` strands and any coupling graph, with the law that MPS cost = `d^cutwidth`; `bundle` (one direction, `χ = hi` for any `K`), `overlay` (two directions on a pair, `(hi−1)²`), `weave`/`wave_weave` (a 2D lattice — area law `d^min(rows,cols)`); GHZ and cluster graph-state couplers |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -421,6 +426,30 @@ choice of site order — interleave to compute, read it off the block bond
 (`Mps::bond_entropy_bits_at`, an `O(χ³)` local diagnostic).
 (`crossing`, `crossing_vees`)
 
+**25. Crossing networks: the cost is the coupling graph's cutwidth, and
+the cutwidth is the dimensionality of the crossing.** Generalizing the X to
+`K` strands and any coupling graph, the MPS bond dimension is exactly
+`d^(edges crossing the worst cut)`, minimized over site orderings by the
+graph's **cutwidth** (proved for graph-state couplers, dense-validated).
+Reading that one integer sorts every richer geometry: a **bundle** of `K`
+strands coupled in one direction (a GHZ rung per site) is cutwidth 1 —
+`χ = hi` for `K = 2, 3, 5, 8`, *any* `K`; two multi-period `wave(1,5,p)`
+strands cross at `p` peak-regions, and the inter-strand entanglement climbs
+(`11.49 → 45.97` bits for `p = 1…4`) while `χ` stays pinned at `hi = 5`
+(**many crossing points, one direction, still cheap**). **Overlaying** a
+second direction on the same pair (X + ladder) unions two matchings into
+4-cycles — cutwidth 2, `χ = (hi−1)²` (`4, 9, 16` for `hi = 3, 4, 5`; the
+*shoulder* squared, since the unique peak carries only the ladder). A
+**weave** — strands in two transverse directions, a 2D lattice — is
+cutwidth `min(rows,cols)`, so `χ = d^rows` (`4, 8, 16, 32` for `rows = 2…5`,
+*flat* in the length): an **area law**, the boundary where the 1D tensor
+network stops being efficient (the MPS/PEPS line), and a **wave weave**
+inherits it with a wave-shaped bond profile `[1,1,2,4,6,4,2,1,1]`. One
+direction of crossing — however many strands or crossing points — is
+constant cutwidth and classically cheap; a second transverse direction is
+exponential. That threshold, not the strand count, governs simulability.
+(`network`, `crossing_networks`)
+
 ## Quick start
 
 ```rust
@@ -461,7 +490,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 116 tests, dense-vs-MPS cross-validation
+cargo test                                   # 122 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -476,6 +505,7 @@ cargo run --release --example boundary_twists
 cargo run --release --example fractional_fourier
 cargo run --release --example shor_kernel
 cargo run --release --example crossing_vees
+cargo run --release --example crossing_networks
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -483,7 +513,7 @@ No dependencies; builds with any reasonably recent stable Rust.
 ## Design notes
 
 * **Verification-first.** Every mechanism is cross-checked against the exact
-  dense simulator on small chains (116 tests), including randomized circuits
+  dense simulator on small chains (122 tests), including randomized circuits
   over both orientations of long-range gates, canonical-form invariance, and
   analytic entropy values.
 * **In-crate numerics.** The SVD is a one-sided Jacobi with two

@@ -110,6 +110,12 @@
 //!   `Σ log2 d` over the active pairs exposes a multiplicity-vs-dimension
 //!   tradeoff — the shoulder `d = hi−1` (paired) injects more than the
 //!   unique peak, and the `d = 1` pinch is a decoupled crossing.
+//! * [`network`] — **networks of crossing strands**: many strands coupled
+//!   by an arbitrary graph, with the law that the MPS cost is the graph's
+//!   *cutwidth*. A one-directional bundle of `K` strands stays at `χ = hi`
+//!   for any `K`; overlaying a second crossing direction adds one to the
+//!   cutwidth (`(hi−1)²`); a two-axis *weave* is an area law
+//!   (`χ = d^min(rows,cols)`) — the MPS/PEPS boundary made explicit.
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -144,6 +150,7 @@ pub mod gates;
 pub mod mat;
 pub mod mpo;
 pub mod mps;
+pub mod network;
 pub mod radix;
 pub mod stabilize;
 pub mod width;
