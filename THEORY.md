@@ -937,6 +937,67 @@ laws that walk obeys, with exact relocalization at whole extent — the
 cursor's finest observable grain agrees with arithmetic exactly when the
 operation width is whole.
 
+### 8.12 Meet-in-the-middle: retrodictive-prediction and the tail-radix solve
+
+The minimal-machine principle (§8.7) says an operator is only as wide as
+its narrowest machine, and §8.7's dual machines realize it. Read
+geometrically, that dual is a *crossing of opposite time directions*, and
+the tail-radix frame (§7) is where the two directions meet — the synthesis
+measured in finding 27.
+
+**Proposition 8.12 (the dual-direction crossing).** For
+`gcd(a, N) = gcd(b, N) = 1`, the composite
+
+```text
+  ÷b ∘ ×a  =  ×(a·b⁻¹ mod N)
+```
+
+crosses a *forward* carry front (`×a`, sweeping LSB→MSB — **prediction**)
+with a *backward* remainder front (`÷b`, sweeping MSB→LSB —
+**retrodiction**, §8.7). Its operator width is bounded by
+`max(width(×a), width(÷b))`, whereas the naive forward machine for
+`m = a·b⁻¹` carries a multiplication carry in `[0, m)` and needs message
+dimension `m`.
+
+*Proof.* Composition of the two opposed cascades; the width bound is
+Theorem 8.5 applied to each narrow factor, and the product's cut rank is at
+most the product of the factors' — here dominated by the wider of the two
+narrow fronts. ∎
+
+This is the geometric content of **retrodictive-prediction**: a forward
+prediction reconciled with a backward retrodiction at the crossing,
+computing an operation neither front reaches alone within the width budget.
+Measured (finding 27): on `Z_2880`, `×2357 = ×7 ⋈ ÷11` at width 17,
+`×2659 = ×7 ⋈ ÷13` at 19, `×2095 = ×5 ⋈ ÷11` at 15 — each verified, and
+each *unbuildable* as a single forward cascade (`m > 512`, the direct-
+construction cap). The crossing is not merely narrower; it is the only
+feasible route.
+
+**Proposition 8.13 (the tail-radix frame is the meeting point).** The
+reversed-digit QFT `V` (§7) conjugates a forward multiplier into a backward
+one, `V M_k V† = ρ M_{k⁻¹} ρ` (Prop. 8.9): prediction and retrodiction are
+the *same operator seen from the two sides of the frame* (measured hs
+fidelity 1.0). And `V` diagonalizes the additive family (the shift
+theorem, §7), so a **mesh of additive solve-components commutes in the
+frame** — its ideal ordering is trivial: enter the frame once, sum the
+diagonal ramps, leave once. The tail-radix banding (Cor. 7.2) makes that
+frame narrow — `χ = 6` reversed against `χ = 36` with the digit reversal,
+which **cancels meet-in-the-middle** between `V` and `V†` (§7.3, finding 9).
+
+The **global tail-radix solve** (finding 27) is then: to compute a wide
+affine/modular operation, cross a forward prediction with a backward
+retrodiction for the multiplicative part (Prop. 8.12), sum the additive
+components in the tail-radix frame (Prop. 8.13), and order the whole solve
+by the ring's own banded Fourier web — reading the answer at the meeting
+point in the middle. Measured (`examples/meet_in_the_middle.rs`): a mesh of
+5 additive components collapses from 5 frame round-trips (~4 ms) to one
+(~0.7 ms), agreeing exactly; and the full affine map
+`x → 2357·x + 500 mod 2880` — whose single-front multiplier is unbuildable
+— solves as a width-17 mesh, verified on basis states. The efficiency is
+the minimal-machine width of §8.7 realized *geometrically*, plus the
+frame's decoupling of the additive mesh; it is a width/representation
+efficiency (bond dimension), not a quantum speedup.
+
 ### 9.8 The frame flow: fractional powers of the QFT
 
 The first edition of this document (§13, problem 3) supposed fractional

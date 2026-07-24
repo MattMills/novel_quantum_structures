@@ -474,6 +474,31 @@ and everything expands into a complex multi-scale shape still costed by one
 number — the cutwidth, now modulated by the renormalization structure.
 (`crossing`, `network`, `renormalizing_crossings`)
 
+**27. Retrodictive-prediction: a wide operation solved as a
+meet-in-the-middle crossing, ordered by the tail-radix web.** The
+antiparallel crossing couples opposite time directions — a *forward*
+cascade (`×a`, **prediction**, sweeps LSB→MSB) crossed with a *backward*
+cascade (`÷b`, **retrodiction**, sweeps MSB→LSB) — and by the
+minimal-machine principle (finding 18) their composite
+`÷b ∘ ×a = ×(a·b⁻¹ mod N)` computes an operation whose single-front machine
+is enormous, at the width of the two narrow fronts. Measured on `Z_2880`:
+`×2357 = ×7 ⋈ ÷11` at **width 17**, `×2659 = ×7 ⋈ ÷13` at 19,
+`×2095 = ×5 ⋈ ÷11` at 15 — each verified, and each *unbuildable* as a
+single forward cascade (`m > 512`, the direct cap), so the crossing is the
+only feasible route. The **tail-radix phase web** (finding 8) is where the
+fronts meet: it conjugates a forward multiplier into a backward one
+(`V M_k V† = M_{k⁻¹}`, hs fidelity 1.0 — prediction and retrodiction are
+frame-conjugate), and it diagonalizes the additive family, so a mesh of
+additive solve-components **commutes in the frame** and its ideal ordering
+is trivial — one frame round-trip instead of five (~4 ms → ~0.7 ms,
+agreeing exactly), with the costly digit-reversal cancelling
+meet-in-the-middle (`χ 6` vs `36`). A full affine map
+`x → 2357·x + 500 mod 2880`, whose single-front multiplier is unbuildable,
+solves as a **width-17 mesh** — forward prediction × backward retrodiction
+for the multiplicative part, an additive component summed in the frame, the
+whole ordered by the ring's own banded Fourier web and read at the meeting
+point. (`cascade`, `radix`, `meet_in_the_middle`)
+
 ## Quick start
 
 ```rust
@@ -532,6 +557,7 @@ cargo run --release --example crossing_vees
 cargo run --release --example crossing_networks
 cargo run --release --example renormalizing_crossings
 cargo run --release --example complexity_census
+cargo run --release --example meet_in_the_middle
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
