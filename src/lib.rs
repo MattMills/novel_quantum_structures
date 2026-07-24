@@ -104,6 +104,12 @@
 //!   missing zero as an annihilating hole dual to the seam. Operator
 //!   linear combinations ([`mpo::Mpo::add`], [`mpo::Mpo::scale`],
 //!   [`mpo::Mpo::basis_transfer`]) make these boundary systems first-class.
+//! * [`crossing`] — **crossing dimension-wave strands**: two waves sharing
+//!   one MPS, crossed pairwise into an X and coupled at a chosen dimension
+//!   level. The inter-strand entanglement is a single bond, and its budget
+//!   `Σ log2 d` over the active pairs exposes a multiplicity-vs-dimension
+//!   tradeoff — the shoulder `d = hi−1` (paired) injects more than the
+//!   unique peak, and the `d = 1` pinch is a decoupled crossing.
 //! * [`circuit`] — a backend-agnostic gate list so every experiment can be
 //!   cross-validated dense-vs-MPS.
 //!
@@ -130,6 +136,7 @@
 pub mod c64;
 pub mod cascade;
 pub mod circuit;
+pub mod crossing;
 pub mod dense;
 pub mod embed;
 pub mod flow;

@@ -65,6 +65,14 @@ modular exponentiation, phase estimation on one reused valley qubit,
 order recovery by continued fractions — priced bond-for-bond in advance
 (finding 23).
 
+And the first step past a single chain: **crossing strands**. Two
+dimension waves `[1,2,3,4,5,4,3,2,1]` laid antiparallel into an X,
+coupled where their dimensions match — and *which* level (5, 4, 3, 2, 1)
+carries the coupling turns out to select the entanglement geometry: the
+shoulder injects more than the peak, the pinch nothing, and the whole
+thing's cost is a choice of site ordering, not a property of the physics
+(finding 24).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -118,6 +126,7 @@ renormalization:
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
 | `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`) and **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`, completing the ring family `N−1 / N / N+1`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
 | `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs |
+| `crossing` | **crossing dimension-wave strands**: two waves sharing one MPS, crossed pairwise into an X (`antiparallel`) or ladder (`parallel`) and coupled at a chosen dimension level; `Layout::{Block, Interleaved}` — the A|B entanglement is one bond in Block, a `≤ hi` near-product in Interleaved (a ~1000× cost knob for the same state) |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -389,6 +398,29 @@ arithmetic in the interior — and the whole protocol runs in a fifth of a
 second. (`cascade::Transducer::mult_skipping`, `mpo::Mpo::select_on`,
 `shor_kernel`)
 
+**24. Two crossing waves entangle by shape, and their cost is a layout
+choice.** Two strands `[1,2,3,4,5,4,3,2,1]` laid antiparallel into an X
+(`A[i] ~ B[n−1−i]`) share one MPS and couple where their dimensions match.
+Bell-coupling the pairs at a level set injects exactly `Σ log2 d` bits
+across the A|B bipartition (Schmidt rank `Π d`) — verified against the
+closed form and dense simulation for every level. The content is in the
+*multiplicity*: a peak's waist (`d=5`) is **unique** but every lower level
+is **paired**, so the most inter-strand entanglement enters at the
+**shoulder** (`d=4`, two pairs, `4.00` bits) — not the peak (`d=5`, one
+pair, `2.32` bits); the `d=1` pinch is a **decoupled crossing**
+(`cshift(1,1) = I`). Cycles add: coupling at 5 then 4 then 3 then 2
+accumulates `2.32+4.00+3.17+2.00 = 11.49` bits, the full budget one level
+per cycle. A **valley** dual reflects the multiplicities (paired wide
+ends, unique pinch), crossing richest at its rims. And the profiling
+headline: the same crossing is `χ = Π d` (144, ~70 ms) in **Block** layout
+but `χ ≤ hi` (4, ~30 µs — a **~1000× gap**) in **Interleaved** layout,
+because a Bell crossing is a product of *local* pairs; a 50-site twin wave
+fully crossed holds `34.5` bits of inter-strand entanglement in 8 KB at
+`χ = 5`. The entanglement is physics; whether it is *expensive* is a
+choice of site order — interleave to compute, read it off the block bond
+(`Mps::bond_entropy_bits_at`, an `O(χ³)` local diagnostic).
+(`crossing`, `crossing_vees`)
+
 ## Quick start
 
 ```rust
@@ -429,7 +461,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 104 tests, dense-vs-MPS cross-validation
+cargo test                                   # 116 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -443,6 +475,7 @@ cargo run --release --example width_atlas
 cargo run --release --example boundary_twists
 cargo run --release --example fractional_fourier
 cargo run --release --example shor_kernel
+cargo run --release --example crossing_vees
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
@@ -450,7 +483,7 @@ No dependencies; builds with any reasonably recent stable Rust.
 ## Design notes
 
 * **Verification-first.** Every mechanism is cross-checked against the exact
-  dense simulator on small chains (49 tests), including randomized circuits
+  dense simulator on small chains (116 tests), including randomized circuits
   over both orientations of long-range gates, canonical-form invariance, and
   analytic entropy values.
 * **In-crate numerics.** The SVD is a one-sided Jacobi with two
@@ -506,5 +539,11 @@ No dependencies; builds with any reasonably recent stable Rust.
 * **Dynamic profiles.** `promote`/`demote`/`merge`/`split` allow the wave
   itself to evolve during a computation — an adaptive-geometry simulator
   where the dimension profile tracks where entanglement wants to live.
-* **Beyond chains.** Mirror pairs hint at a ladder; the natural next
-  structure is a tree or bowtie *network* of dimension waves.
+* **Beyond chains.** The first step is taken — `crossing` puts two waves on
+  one MPS as an X (finding 24), and shows the layout, not the entanglement,
+  is the cost. The next structures are genuine *networks*: a ladder
+  (parallel crossing), then trees and necklaces of waves, where no single
+  interleaving localizes every coupler and choosing the site order becomes
+  a combinatorial layout-optimization problem (the crossing pattern's
+  tree-width). Do lattices of crossed waves obey an area law, and can
+  `xswap` relocate inter-strand entanglement toward chosen cuts?

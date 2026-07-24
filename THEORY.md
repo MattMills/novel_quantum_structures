@@ -34,8 +34,9 @@ vectors) is the *language* in which those questions become sharp.
 | 8 | stepwise cascades, duals, the atlas, the Shor kernel | `cascade`, `width`, `mpo` | 15–18, 20, 23 |
 | 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
 | 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
-| 11 | numerical foundations | `mat`, `c64` | design notes |
-| 12 | dictionary and open problems | — | open directions |
+| 11 | crossing strands: dimension-wave networks | `crossing`, `zigzag` | 24 |
+| 12 | numerical foundations | `mat`, `c64` | design notes |
+| 13 | dictionary and open problems | — | open directions |
 
 Throughout: sites are indexed `0 … n−1`, local dimensions `d_0 … d_{n−1}`,
 `N = Π_k d_k`, and `ω = ω_N = e^{2πi/N}`. "Bond `m`" is the cut between
@@ -716,7 +717,7 @@ per-cut recompression always attains the intrinsic rank; but no single
 sweep's **alphabet** comes close — the narrow presentation exists only
 after composition + recompression. Machines are upper-bound certificates
 for construction, and the intrinsic width is in general strictly finer
-than every one of them (see the revised open problem 2 in §12).
+than every one of them (see the revised open problem 2 in §13).
 
 ### 8.11 Controlled cascades: the priced Shor kernel
 
@@ -919,7 +920,7 @@ finer ones is a **choice of path through operator space** — routes with
 identical endpoints pass through essentially disjoint midpoints, at
 route-dependent width cost (here the causal detour is strictly narrower
 than the geodesic). "Width-optimal imputation" is thereby a well-posed
-optimization problem, posed concretely by this library (§12).
+optimization problem, posed concretely by this library (§13).
 
 ### 9.7 The width cursor
 
@@ -938,7 +939,7 @@ operation width is whole.
 
 ### 9.8 The frame flow: fractional powers of the QFT
 
-The first edition of this document (§12, problem 3) supposed fractional
+The first edition of this document (§13, problem 3) supposed fractional
 powers of the QFT needed `V`'s eigenframe. For the standard-order frame
 they need no eigensolver at all:
 
@@ -1145,7 +1146,127 @@ a hole that drains) — all selected by vectors, and one permutation, on a
 bond of dimension `k`.
 
 
-## 11. Numerical foundations
+## 11. Crossing strands: dimension-wave networks
+
+Every structure so far lives on one chain. The `crossing` module takes the
+first step past that — the README's "beyond chains" direction — with *two*
+dimension-wave strands sharing one MPS, crossed so they interact across
+scales. The canonical object is two peaks `[1,2,3,4,5,4,3,2,1]` laid
+antiparallel into an X.
+
+**Definition 11.1 (crossing).** Given strands `A`, `B` of equal length `n`,
+the *antiparallel* pairing couples `A[i]` to `B[n−1−i]` (the X); the
+*parallel* pairing couples `A[i]` to `B[i]` (a ladder). A pairing is
+*dimension-consistent* where `dim A[i] = dim B[partner(i)]`; for twin
+palindromic strands every pair matches. The *interaction level* selects
+which dimension band `d` carries a coupler. The two strands share one MPS
+under a **layout** (Definition 11.6).
+
+**Proposition 11.2 (crossing budget).** Bell-couple (fourier on the A
+partner, `cshift(d,d)` onto the B partner) every dimension-consistent pair
+whose dimension lies in a level set `L`. Then the entanglement across the
+A|B bipartition is exactly
+
+```text
+  S(A|B) = Σ_{pairs p active}  log2 d_p       bits,
+  rank(A|B) = Π_{pairs p active} d_p ,
+```
+
+with a flat spectrum, summed over the *active pairs* (dimension in `L`).
+
+*Proof.* Each active pair becomes the generalized Bell state
+`Σ_k |k⟩_{A[i]}|k⟩_{B[j]}/√d` — one leg in `A`, one in `B` — of Schmidt
+rank `d` and flat spectrum across the A|B cut. Inactive sites stay in
+`|0⟩`. The global state is a tensor product of these pairs with a product
+remainder, and Schmidt ranks/entropies multiply/add across tensor
+products. ∎
+
+The budget is measured to machine precision against the closed form and
+cross-validated against dense simulation for every single level
+(`examples/crossing_vees.rs`, finding 24). Its content is in the
+*multiplicity*:
+
+**Corollary 11.3 (multiplicity beats dimension).** On a peak
+`diamond(1, hi)` with antiparallel pairing, the single-level A|B entropy is
+`m(d)·log2 d` where `m(d)` is the number of pairs at dimension `d`. The
+peak `d = hi` is *unique* (`m = 1`); every lower level is *paired*
+(`m = 2`). So the maximum is at the **shoulder** `d = hi−1`, not the peak,
+whenever `2 log2(hi−1) > log2 hi`, i.e. `(hi−1)² > hi` — true for all
+`hi ≥ 3`. For `[1..5..1]`: `4` bits at the shoulder against `2.32` at the
+peak. A palindrome's peak is a bottleneck of *multiplicity*, not of
+dimension.
+
+**Corollary 11.4 (the dimension-1 pinch).** A coupler at `d = 1` is the
+identity (`cshift(1,1) = [1]`, `xswap(1,·) = I`), so level-1 coupling
+injects nothing — the pinch is a *decoupled* crossing. A `d = 1` site
+carries no entanglement of its own (its physical space is one-dimensional)
+yet still routes bond correlation past it: a spacer, not a wall. (Verified
+end-to-end: the engine handles `d = 1` sites and long-range gates threaded
+through them at fidelity 1.)
+
+**Proposition 11.5 (cycles add).** Bell couplings at disjoint level sets
+act on disjoint sites, hence commute, and their A|B entropies sum. So
+"interact at level `d` in cycle `k`" accumulates linearly and
+order-independently, up to the total budget `Σ_i log2 P_i` reached when
+every level is active. Measured: `2.32 + 4 + 3.17 + 2 = 11.49` bits on the
+peak-5 twin, one level per cycle. This is the precise sense of the user's
+"interact at 5, 4, 3, 2, or 1, in a second cycle."
+
+**The valley dual.** Since `valley[i] = hi+lo − diamond[i]`
+(Def. `zigzag::valley`), the multiplicities reflect: a valley's *wide ends*
+are paired and its *pinch* is unique. So a valley crosses most richly at
+its rims (`2 log2 hi`, e.g. `4.64` bits at `d = 5`), a diamond at its
+shoulders. Where a crossing can entangle two waves is a property of the
+*shape*, not just the dimensions present.
+
+### 11.6 Layout is the cost, not the entanglement
+
+The performance lesson — and the direct answer to "can this be more
+efficient?" — is that the inter-strand entanglement is *physics* but its
+*cost* is a representation choice.
+
+**Definition 11.6 (layouts).** A crossing orders its `2n` sites along the
+shared MPS either as **Block** (`A` then `B`, so the A|B bipartition is the
+single bond `n−1`) or **Interleaved** (each crossing pair on adjacent
+sites).
+
+**Proposition 11.7 (layout cost gap).** For a Bell crossing:
+
+* **Block** layout carries the full A|B entanglement on one contiguous
+  bond, so its bond dimension there is `rank(A|B) = Π d` (up to 2880 for
+  twin `[1..5..1]`), and every coupler is long-range — threaded across the
+  A|B boundary through `Θ(n)` intervening tensors.
+* **Interleaved** layout makes every coupler nearest-neighbour, and every
+  contiguous cut severs *at most one* Bell pair, so bond dimension stays
+  `≤ hi` regardless of how many levels are coupled.
+
+*Proof of the interleaved bound.* Place pair `k` (partners `A[i]`,
+`B[partner(i)]`) at MPS positions `(2k, 2k+1)`. A contiguous cut falls
+either inside a pair (severing that one Bell pair, rank `≤ hi`) or between
+pairs `k` and `k+1` (all pairs `≤ k` fully left, all pairs `> k` fully
+right — a product, rank 1). ∎
+
+The measured gap is decisive (finding 24): the full crossing of the peak-4
+twin is `χ = 144`, 94 546 parameters, ~70 ms in Block; the *same physical
+state* is `χ = 4`, 88 parameters, ~30 µs Interleaved — a ~1000× cost gap
+with identical `S(A|B) = 7.17` bits. A 50-site twin wave, fully crossed,
+is `χ = 5` in 8 KB. The block layout's expense is not the entanglement (a
+genuine 7.17 bits, and `χ = 144` is the minimum for a *contiguous* cut
+carrying it) — it is the choice to make A|B contiguous. **Interleave to
+compute; read the entanglement off the block bond.** The single-bond
+diagnostic `Mps::bond_entropy_bits_at` (an `O(χ³)` local SVD, not the
+`O(nχ³)` full sweep) makes that read cheap.
+
+Compressibility, as everywhere in this crate, is structural: a Haar-random
+cross-coupling on the same pairs saturates any bond budget. Two open
+directions sit immediately beyond the X: the parallel *ladder* (same
+budget, different geometry), and genuine *networks* — trees and necklaces
+of strands, where a single interleaving no longer localizes every coupler
+and the layout-optimization problem of Proposition 11.7 becomes
+combinatorial.
+
+
+## 12. Numerical foundations
 
 The entire stack — complex arithmetic, RNG, QR, SVD — is in-crate and
 dependency-free, so every numerical claim above rests on ~900 audited lines
@@ -1178,17 +1299,17 @@ dependency-free, so every numerical claim above rests on ~900 audited lines
 The epistemology of the crate follows from §7.4's lesson: *rank-side*
 guarantees (exact canonicalization, discard tallies) and *weight-side*
 guarantees (f64 phase resolution, relative cutoffs) are different
-promises, and the test suite exercises both — 88 tests, with every
+promises, and the test suite exercises both — 116 tests, with every
 structural mechanism cross-validated against the dense ground-truth
 simulator and, where possible, against closed-form laws (Schmidt spectra,
 entropy values, moment laws, convergence rates) rather than against
 snapshots of its own output.
 
 
-## 12. Dictionary, and open problems
+## 13. Dictionary, and open problems
 
 The unifying observation of the library is that **one representation — an
-MPS over a heterogeneous chain — supports four semantic layers**, and that
+MPS over a heterogeneous chain — supports five semantic layers**, and that
 its bond dimension means something different, and true, in each:
 
 | layer | object | carrier | bond dimension reads as | boundary reads as |
@@ -1197,6 +1318,7 @@ its bond dimension means something different, and true, in each:
 | block | circuit block `U` | Choi MPS on `d²` | operator entanglement: past↔future pipeline width (§6) | — |
 | machine | transducer | 0/1 MPO | width of the classical message front (§8) | drop = mod N; postselect = exact division; trace = mod N−1 |
 | flow | `t ↦ U^t` | MPO family | operation width — integer-quantized (§9) | — |
+| network | crossed strands | MPS on `2n` sites | inter-strand entanglement (Block), or local-pair width (Interleaved) — layout-dependent (§11) | — |
 
 and, orthogonally, that **number theory surfaces as operator properties**:
 
@@ -1261,6 +1383,17 @@ Problems this document sharpens beyond the README's open directions:
    attractors, and convergence laws are reachable by boundary engineering
    alone, for a fixed transducer body, remains wide open — but the
    instrument set now includes the twist.
+7. **Networks of strands.** §11 crosses two strands into an X (finding 24)
+   and shows the layout — not the entanglement — is the cost. The open
+   direction is genuine networks: trees and necklaces of dimension waves,
+   where no single interleaving localizes every coupler, so
+   Proposition 11.7's cost bound becomes a combinatorial
+   layout-optimization problem (minimize the maximum contiguous bond over
+   orderings of a coupling graph — tree-width of the crossing pattern).
+   The physics questions follow the geometry: does a lattice of crossed
+   waves have an area law, and does `xswap` relocate inter-strand
+   entanglement toward chosen cuts the way it was conjectured to for mirror
+   pairs (README open directions)?
 
 
 ## References

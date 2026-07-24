@@ -28,11 +28,27 @@ use crate::circuit::Circuit;
 use crate::gates;
 use crate::mat::Rng;
 
-/// Expand-and-collapse profile `lo, lo+1, …, hi, …, lo+1, lo`.
+/// Expand-and-collapse profile `lo, lo+1, …, hi, …, lo+1, lo` (a peak).
+/// `lo` may be 1: `diamond(1, 5) = [1,2,3,4,5,4,3,2,1]`, the profile whose
+/// dimension-1 endpoints are trivial spacers (see [`crate::crossing`]).
 pub fn diamond(lo: usize, hi: usize) -> Vec<usize> {
-    assert!(lo >= 2 && hi >= lo);
+    assert!(lo >= 1 && hi >= lo);
     let mut p: Vec<usize> = (lo..=hi).collect();
     p.extend((lo..hi).rev());
+    p
+}
+
+/// Collapse-and-expand profile `hi, hi-1, …, lo, …, hi-1, hi` (a valley —
+/// the value-reflection of [`diamond`], `valley[i] = hi + lo − diamond[i]`).
+/// `valley(1, 5) = [5,4,3,2,1,2,3,4,5]`. A diamond has a *unique peak* with
+/// paired flanks; a valley a *unique pinch* with paired wide ends — the
+/// same range of dimensions with **reflected multiplicities**, which flips
+/// where a crossing can inject the most entanglement (see
+/// [`crate::crossing`]).
+pub fn valley(lo: usize, hi: usize) -> Vec<usize> {
+    assert!(lo >= 1 && hi >= lo);
+    let mut p: Vec<usize> = (lo..=hi).rev().collect();
+    p.extend(lo + 1..=hi);
     p
 }
 
@@ -165,6 +181,23 @@ pub fn crosswave_round(profile: &[usize]) -> Circuit {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diamond_from_one_and_valley() {
+        assert_eq!(diamond(1, 5), vec![1, 2, 3, 4, 5, 4, 3, 2, 1]);
+        assert_eq!(valley(1, 5), vec![5, 4, 3, 2, 1, 2, 3, 4, 5]);
+        assert_eq!(diamond(1, 1), vec![1]);
+        // Value-reflection: valley[i] = hi + lo − diamond[i], so their
+        // multiplicities are reflected (the diamond's paired 1-ends become
+        // the valley's paired 5-ends).
+        let (d, v) = (diamond(1, 5), valley(1, 5));
+        for i in 0..d.len() {
+            assert_eq!(v[i], 6 - d[i]);
+        }
+        // Both palindromic.
+        let r: Vec<usize> = valley(1, 4).iter().rev().cloned().collect();
+        assert_eq!(valley(1, 4), r);
+    }
 
     #[test]
     fn diamond_and_wave_shapes() {
