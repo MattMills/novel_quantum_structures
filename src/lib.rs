@@ -90,7 +90,11 @@
 //!   `χ_cut(×k) = |{⌊k·b/S⌋ mod L}|` as executable number theory, so the
 //!   bond profile of modular multiplication is computed *before* any
 //!   tensor is built — and pinned against recompressed cascade MPOs by
-//!   the tests.
+//!   the tests. Off the native family, [`width::perm_cut_rank`] prices
+//!   *any* permutation of the ring exactly (a Gram matrix per cut, no
+//!   tensors) — the instrument behind the **foreign-ring reduction
+//!   penalty**: leaving `Z_N` squares the operator width
+//!   (`examples/foreign_rings.rs`, THEORY.md §8.13).
 //! * [`stabilize`] — **self-stabilizing boundary systems**: close a cascade's
 //!   message loop ([`cascade::Transducer::to_mpo_looped`]) and it becomes a
 //!   non-unitary dynamical system with a designed attractor. The traced
@@ -101,8 +105,13 @@
 //!   *Twisting* the loop by the message reversal
 //!   ([`cascade::Transducer::to_mpo_looped_twisted`]) selects the third
 //!   ring of the family — diminished-one arithmetic mod `N+1`, with the
-//!   missing zero as an annihilating hole dual to the seam. Operator
-//!   linear combinations ([`mpo::Mpo::add`], [`mpo::Mpo::scale`],
+//!   missing zero as an annihilating hole dual to the seam — and
+//!   *scaling* the loop ([`cascade::Transducer::to_mpo_looped_scaled`]
+//!   on the widened alphabets of [`cascade::Transducer::mult_wide`] /
+//!   [`cascade::Transducer::adder_wide`]) selects the whole
+//!   **pseudo-Mersenne band** mod `N−r`: the exiting wrap re-enters
+//!   multiplied by `r`, Crandall reduction as a boundary condition.
+//!   Operator linear combinations ([`mpo::Mpo::add`], [`mpo::Mpo::scale`],
 //!   [`mpo::Mpo::basis_transfer`]) make these boundary systems first-class.
 //! * [`crossing`] — **crossing dimension-wave strands**: two waves sharing
 //!   one MPS, crossed pairwise into an X and coupled at a chosen dimension

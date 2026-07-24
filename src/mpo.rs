@@ -114,6 +114,49 @@ impl Mpo {
         m
     }
 
+    /// The exact MPO of an arbitrary permutation `x → π(x)` of the chain's
+    /// ring, built through its dense Choi carrier and compressed exactly —
+    /// so its bond dimensions *are* the permutation's operator Schmidt
+    /// ranks (pinned against [`crate::width::perm_cut_rank`] by the
+    /// tests). Verification-grade: cost and memory are `O(N²)` in the ring
+    /// size `N = Π dᵢ`, so this is for small chains; structured
+    /// permutations at scale go through [`crate::cascade::Transducer`].
+    pub fn from_permutation(
+        dims: &[usize],
+        perm: impl Fn(usize) -> usize,
+        trunc: TruncSpec,
+    ) -> Mpo {
+        use crate::dense::DenseState;
+        let n_sites = dims.len();
+        let doubled: Vec<usize> = dims.iter().map(|&d| d * d).collect();
+        let mut st = DenseState::zero_state(&doubled);
+        st.amps[0] = C64::ZERO;
+        let n: usize = dims.iter().product();
+        let mut hit = vec![false; n];
+        for x in 0..n {
+            let y = perm(x);
+            assert!(y < n && !hit[y], "not a permutation of the chain's ring");
+            hit[y] = true;
+            let (mut xv, mut yv) = (x, y);
+            let mut digs = vec![0usize; n_sites];
+            for i in (0..n_sites).rev() {
+                let d = dims[i];
+                digs[i] = (yv % d) * d + (xv % d);
+                xv /= d;
+                yv /= d;
+            }
+            let mut idx = 0usize;
+            for (i, &dd) in doubled.iter().enumerate() {
+                idx = idx * dd + digs[i];
+            }
+            st.amps[idx] = C64::ONE;
+        }
+        Mpo {
+            dims: dims.to_vec(),
+            carrier: Mps::from_dense(&st, trunc),
+        }
+    }
+
     /// Absorb one more gate applied *after* the current operator
     /// (`self ← G ∘ self`).
     pub fn absorb_after(&mut self, op: &Op) {
@@ -560,6 +603,19 @@ mod tests {
             let cm = Mpo::select_on(0, &[id, m], spec);
             assert_eq!(cm.bond_dims(), expect, "k={}", k);
         }
+    }
+
+    #[test]
+    fn from_permutation_matches_the_cascade() {
+        // The dense-Choi route and the transducer route must produce the
+        // same operator with the same exact bond profile.
+        use crate::cascade::Transducer;
+        let dims = vec![2usize, 3, 4]; // N = 24
+        let spec = TruncSpec::exact();
+        let via_dense = Mpo::from_permutation(&dims, |x| 7 * x % 24, spec);
+        let via_cascade = Transducer::mult(&dims, 7).to_mpo(spec);
+        assert_eq!(via_dense.bond_dims(), via_cascade.bond_dims());
+        assert!((via_dense.hs_fidelity(&via_cascade) - 1.0).abs() < 1e-10);
     }
 
     #[test]
