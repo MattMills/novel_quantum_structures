@@ -54,6 +54,13 @@ that repairs the number representation with an exact `1/(k²+1)` law, and a
 rank-one damper makes the repair exponential at a rate you choose
 (finding 19 below).
 
+Three further instruments close the loop between the theory document and
+the laboratory: the **width atlas** computes operator widths from pure
+number theory before any tensor exists (finding 20), **boundary twists**
+re-wire a machine's message loop so one body computes mod `N−1`, `N`, or
+`N+1` (finding 21), and the **frame flow** takes fractional powers of the
+QFT itself out of its own operator algebra, `F⁴ = I` (finding 22).
+
 ```text
   5           ●                 ●
   4         ●   ●             ●   ●
@@ -103,9 +110,10 @@ renormalization:
 | `zigzag` | diamond/wave profiles, mirror pairs, valleys & waists, named circuit families (`bowtie`, `crosswave_round`, `brickwork_random`) |
 | `mpo` | **circuit-of-circuits**: circuit blocks as matrix product operators — Choi-carrier states on the doubled chain, block composition (`compose_after`), one-shot application (`apply_to`), operator-entanglement diagnostics |
 | `radix` | the **tail-radix phase web**: mixed-radix QFT over the chain's ring `Z_N` (standard and reversal-free), Draper phase ramps, the exact bond-2 carry adder MPO |
-| `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total) |
+| `flow` | **operator flows and the operation-width cursor**: exact fractional powers `U^t` via the Fourier frame (`FourierFlow`), and `WidthCursor` — a pipeline of flow segments at adaptive temporal resolution (refine/coarsen with invariant total); `FrameFlow` — fractional powers of the **QFT itself** as the four-term projector combination `F^t = Σ c_m(t)·F^m` (`F⁴ = I`), no eigensolver needed |
 | `cascade` | **stepwise cascade operators**: finite-state transducers lifted to MPOs with the message riding the bond — the carry adder (m = 2), modular multiplication `x → kx mod N` (m = k, unitary iff gcd(k, N) = 1), recursive composition, and the **geometrically opposed dual machine** (`div`: MSB-first remainders with superposed-entry/postselected-exit boundaries, computing `×k⁻¹` at width k) |
-| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `stabilize` | **self-stabilizing boundary systems**: looped message boundaries (`to_mpo_looped`) and **twisted loops** (`to_mpo_looped_twisted` — the reversal twist selects diminished-one arithmetic mod `N+1`, completing the ring family `N−1 / N / N+1`), iteration dynamics with an attractor, plus operator linear combinations (`Mpo::add`/`scale`/`basis_transfer`) |
+| `width` | the **a-priori width calculus**: the cut-rank theorem `χ_cut(×k) = \|{⌊kb/S⌋ mod L}\|` as executable number theory — per-bond width profiles of modular multiplication computed with no tensors, pinned bond-for-bond against recompressed cascade MPOs |
 | `circuit` | backend-agnostic gate lists so every experiment cross-validates dense vs MPS |
 
 ## Findings (all reproducible from `examples/`)
@@ -291,6 +299,66 @@ makes stabilization exponential — 1001 iterations at γ = 1 collapse to
 the boundary, not inside the operator. (`stabilize`,
 `self_stabilizing_boundaries`)
 
+**20. The width of a multiplication operator is computable before the
+operator exists — and resonance survives at trillion scale.** The
+cut-rank theorem (THEORY.md §8) reduces the operator Schmidt rank of `×k`
+across any cut to counting `|{⌊kb/S⌋ mod L}|` — executable number theory,
+no tensors (`width`). The full atlas of `Z_2880`: 668 of the 768
+invertible multipliers (87%) saturate the waist cap 24; 100 are resonant,
+down to width 2 (`×1441`, `×2879 = −1`) and width 3 (`×961`, `×1439`,
+`×1921`). Predictions match exactly-recompressed cascade MPOs
+bond-for-bond — `×7`, `×49 = ×7∘×7`, `×2401 = ×49∘×49` on diamond(2,4),
+and all 24 bonds of `×7` on the wave. The sharpened minimal-machine
+statement: **584 of 768 multipliers have intrinsic width below every
+single-front machine alphabet** `min(k, k⁻¹, N−k, (N−k)⁻¹)` by a factor
+> 8 (extreme: `×1441`, width 2 vs best alphabet 1439 — a 719× gap), so
+their narrow presentations are reachable only through composition +
+recompression: no single sweep of the chain carries so little. At scale,
+the squaring orbit of 7 mod `8.6·10¹²` has central-cut widths
+`7 → 49 → 2401 → 2 073 600 (cap) → 1 077 111 → 1 928 737` — the cost
+curve of modular exponentiation stays number-theoretically resonant on a
+trillion-element ring, and it is computed a priori. (`width`,
+`width_atlas`)
+
+**21. Twisting the loop selects a third ring: one machine computes mod
+N−1, N, and N+1.** Feeding the exiting message back through the
+*reversal* permutation (`to_mpo_looped_twisted`) turns the carry machines
+into **diminished-one arithmetic mod `N+1`** — the encoding of
+Fermat-number-transform hardware: chain value `x` represents `v = x+1`,
+the twisted `+c` maps `v → v+(c+1) mod N+1`, the twisted `×k` maps
+`v → k·v mod N+1` exactly, and the unrepresentable zero of `Z_{N+1}` is
+an *annihilated branch* — a **hole**, the dual of the straight loop's
+double-zero **seam** (the same input `x = N−1−c` hits both defects). On
+`[2,3,4,3]` (`N = 72`, flanked by the twin primes 71 and 73) both closed
+rings are fields: `×6` (defect 0.833 open) is healed by either closure
+(defect ≤ 10⁻¹⁶). The twist can also *break*: `×5` is unitary on `Z_24`
+but defective on the twist ring `25 = 5²` (defect 0.833, four annihilated
+holes), and the diamond's twist ring `2881 = 43·67` shows the
+factorization branch-by-branch (`|0⟩` and `|67⟩` collide on `|42⟩`;
+`v = 67` annihilates). The twisted traced identity is the unilateral
+shift `Σ|x+1⟩⟨x|` — a *drain* into the missing zero obeying the exact law
+`‖M^k·uniform‖² = (N−k)/N` — where the straight trace was a pump.
+Primality of `N∓1` is the design criterion, selectable by profile.
+(`cascade::Transducer::to_mpo_looped_twisted`, `boundary_twists`)
+
+**22. The QFT is itself a flow, spanned by four operators.** `F⁴ = I` on
+any ring, so the QFT's spectral projectors are polynomials in `F` and the
+fractional Fourier transform is the exact four-term combination
+`F^t = c₀(t)·I + c₁(t)·F + c₂(t)·Π + c₃(t)·F†` (`Π` = the ring
+reflection `x → −x`, a width-2 machine) — assembled by operator linear
+algebra, no eigensolver (`flow::FrameFlow`). Measured on diamond(2,4): an
+exact one-parameter group of period 4 (`F^½ ∘ F^½ = F`,
+`F^0.7 ∘ F^1.3 = Π`, `F^3.5 ∘ F^0.5 = I`, each at fidelity
+1.000000000), unitary at every `t`. The frame-quantization signature
+refines finding 12: operator entanglement is *pinned* to the pure-power
+value at every integer (extrema 0 / 5.170 / 1.000 / 5.170 bits), but bond
+dimension collapses only at `t ≡ 0, 2 (mod 4)` (χ = 1, 2 against the
+flat cap 36 elsewhere) — `F` itself saturates the geometry, so **width
+sees the frame exactly where the frame is narrower than the geometry**.
+Participation of `F^t|x₀⟩` breathes with period 2: localized at even `t`,
+maximally flat (1/N) at odd `t`. (`flow::FrameFlow`,
+`fractional_fourier`)
+
 ## Quick start
 
 ```rust
@@ -331,7 +399,7 @@ let shifted = adder.apply_to(&psi);          // |x⟩ → |x + 1234 mod 2880⟩
 ## Running
 
 ```sh
-cargo test                                   # 88 tests, dense-vs-MPS cross-validation
+cargo test                                   # 100 tests, dense-vs-MPS cross-validation
 cargo run --release --example diamond_bowtie
 cargo run --release --example hosted_qubits
 cargo run --release --example scale_morphing
@@ -341,6 +409,9 @@ cargo run --release --example operator_width_cursor
 cargo run --release --example stepwise_cascade
 cargo run --release --example opposed_fronts
 cargo run --release --example self_stabilizing_boundaries
+cargo run --release --example width_atlas
+cargo run --release --example boundary_twists
+cargo run --release --example fractional_fourier
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.

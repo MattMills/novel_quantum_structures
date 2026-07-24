@@ -31,9 +31,9 @@ vectors) is the *language* in which those questions become sharp.
 | 5 | scale morphing | `mps` | 5 |
 | 6 | operators as states | `mpo` | 9 (setup) |
 | 7 | the tail-radix phase web | `radix` | 8–11 |
-| 8 | stepwise cascades and their duals | `cascade` | 15–18 |
-| 9 | operator flows and the width cursor | `flow` | 12–14 |
-| 10 | self-stabilizing boundary systems | `stabilize`, `cascade` | 19 |
+| 8 | stepwise cascades, their duals, the width atlas | `cascade`, `width` | 15–18, 20 |
+| 9 | operator flows, the width cursor, the frame flow | `flow` | 12–14, 22 |
+| 10 | self-stabilizing boundary systems and twisted loops | `stabilize`, `cascade` | 19, 21 |
 | 11 | numerical foundations | `mat`, `c64` | design notes |
 | 12 | dictionary and open problems | — | open directions |
 
@@ -685,6 +685,39 @@ non-palindromic chain (finding 17): the Fourier frame implements, in one
 stroke, both the arithmetic inversion and the geometric front reversal that
 §8.7 realizes combinatorially.
 
+### 8.10 The executable atlas
+
+Theorem 8.5 is constructive: `|{⌊kb/S⌋ mod L}|` is elementary arithmetic,
+so the width of a multiplication operator is known *before the operator
+exists*. The `width` module implements the calculus (closed form
+`min(k, L)` when `k ≤ S` — the crossing sequence steps by 0 or 1 and is
+onto `[0, k)` — enumeration otherwise, with `k` always reducible mod `N`),
+and the test suite pins it against exactly-recompressed cascade MPOs
+bond-for-bond, including through composition: `×49 = ×7 ∘ ×7` on
+`diamond(2,4)` lands exactly on the predicted `[2,3,3,2]` — *narrower than
+its own factor* `×7` at `[2,6,6,2]`.
+
+Measured atlas of `Z_2880` (finding 20, `examples/width_atlas.rs`):
+668 of the 768 invertible multipliers saturate the waist cap 24; the
+resonant tail reaches width 2 (`×1441` — an involution, `1441² ≡ 1` — and
+`×2879 = −1`) and width 3 (`×961`, `×1439`, `×1921`). On the wave
+(`N ≈ 8.6·10¹²`) the squaring orbit of 7 has central-cut widths
+`7 → 49 → 2401 → 2 073 600 (cap) → 1 077 111 → 1 928 737`: resonance is
+not a small-ring artifact, and it is computed a priori.
+
+The atlas also sharpens §8.7's minimal-machine principle into a *negative*
+result about construction. Let the best single-front alphabet be
+`B(k) = min(k, k⁻¹, N−k, (N−k)⁻¹)` — the smallest message set any of the
+four dual sweeps (forward/opposed, direct/reflected) must carry. Measured:
+**584 of 768 multipliers have intrinsic waist width below `B(k)` by a
+factor > 8** (extreme: `×1441`, width 2 against `B = 1439` — a 719× gap).
+Theorem 8.5's `Γ` *is* the forward machine's realized crossing set, so
+per-cut recompression always attains the intrinsic rank; but no single
+sweep's **alphabet** comes close — the narrow presentation exists only
+after composition + recompression. Machines are upper-bound certificates
+for construction, and the intrinsic width is in general strictly finer
+than every one of them (see the revised open problem 2 in §12).
+
 
 ## 9. Operator flows and the operation-width cursor
 
@@ -841,6 +874,49 @@ laws that walk obeys, with exact relocalization at whole extent — the
 cursor's finest observable grain agrees with arithmetic exactly when the
 operation width is whole.
 
+### 9.8 The frame flow: fractional powers of the QFT
+
+The first edition of this document (§12, problem 3) supposed fractional
+powers of the QFT needed `V`'s eigenframe. For the standard-order frame
+they need no eigensolver at all:
+
+**Proposition 9.7 (projector flow of the QFT — finding 22).** On any ring
+`Z_N`, `F² = Π` (the reflection `x ↦ −x mod N`) and `F⁴ = I`. Hence the
+spectral projectors of `F` are polynomials in `F`,
+`P_j = ¼ Σ_{m<4} i^{−jm} F^m`, and the matrix-power fractional Fourier
+transform [12]
+
+```text
+  F^t := Σ_j i^{j·t} P_j = Σ_{m=0}^{3} c_m(t) · F^m ,
+  c_m(t) = ¼ Σ_{j=0}^{3} e^{iπ·j·(t−m)/2} ,
+```
+
+is an exact one-parameter group of period 4, unitary at every `t`,
+assembled from four MPOs the crate already owns — `I` (χ = 1), `F`,
+`Π` (the width-2 reflection machine of §8.7), and `F†` — by operator
+linear combination (`flow::FrameFlow`).
+
+*Proof.* `F²|x⟩ = (1/N) Σ_{y,z} ω^{xz+zy} |y⟩ = Σ_y δ_{x+y≡0} |y⟩ =
+|−x mod N⟩`, so `F⁴ = Π² = I`. The projector algebra
+(`P_j P_k = δ_{jk} P_j`, `Σ_j P_j = I`) reduces to `F⁴ = I`; the group law
+and unitarity follow from the eigenvalue reading `F^t = Σ_j i^{jt} P_j`. ∎
+
+Measured on `diamond(2,4)` (`examples/fractional_fourier.rs`): the group
+law and endpoint identities hold at fidelity `1.000000000`
+(`F^½ ∘ F^½ = F`, `F^0.7 ∘ F^1.3 = Π`, `F^3.5 ∘ F^0.5 = I`), with unit
+norm on states at every `t`. The width signature refines finding 12
+instructively. Operator entanglement is *pinned* to the pure-power value
+at every integer — the curve passes through `0 → 5.170 → 1.000 → 5.170 →
+0` bits, an extremum each time — but bond dimension collapses only at
+`t ≡ 0, 2 (mod 4)` (χ = 1 and 2 against a flat 36 elsewhere), because `F`
+itself *saturates* the profile's operator-width cap: at odd integers,
+rank has nothing to collapse to. **Width sees the frame exactly where the
+frame is narrower than the geometry** — quantization detection by bond
+dimension requires headroom between the operator and the geometric
+budget. Participation of `F^t|x₀⟩` breathes with period 2 (localized at
+even `t`, maximally flat at odd `t`), the frame-flow counterpart of
+Proposition 9.4.
+
 
 ## 10. Self-stabilizing boundary systems
 
@@ -943,18 +1019,68 @@ dissolving gcd obstructions), the seam supplies the attractor that repairs
 the representation, and a rank-one damper sets the convergence law —
 polynomial by default, exponential at a chosen rate.
 
+### 10.6 Twisted loops: the mod N±1 family
+
+The loop of Definition 10.1 admits a twist: feed the exit back through a
+permutation `σ` of the message set, `T_σ = Σ_m ⟨σ(m)| T |m⟩`
+(`Transducer::to_mpo_looped_twisted`; Definition 10.1 is `σ = id`). The
+reversal twist completes a ring family around the open machine:
+
+**Theorem 10.7 (reversal twist = diminished-one mod N+1 — finding 21).**
+For the carry machines, twisting the loop by the message reversal
+`σ(m) = M−1−m` yields exactly the **diminished-one arithmetic** of
+`Z_{N+1}` — the encoding of Fermat-number-transform hardware [13] — in
+which chain value `x` represents `v = x+1 ∈ [1, N]`:
+
+* the twisted adder `+c` maps `v ↦ v + (c+1) mod (N+1)`, with the branch
+  **annihilated** when the result is the unrepresentable zero (a *hole*
+  at `x = N−1−c`);
+* the twisted multiplier `×k` maps `v ↦ k·v mod (N+1)` exactly, hole-free
+  and unitary iff `gcd(k, N+1) = 1`.
+
+*Proof.* Adder: with entry carry `m ∈ {0,1}` the open machine computes
+`x+c+m` with exit carry `m′ = ⌊(x+c+m)/N⌋`; the twist keeps branches with
+`m′ = 1−m`. For `x+c ≤ N−2` only `m = 1` is consistent (no overflow),
+giving `x+c+1`; for `x+c ≥ N` only `m = 0` is (overflow), giving `x+c−N`;
+at `x+c = N−1` neither is — the hole. In value coordinates the two live
+branches are `v ↦ v+(c+1)` and `v ↦ v+(c+1)−(N+1)`. Multiplier: entry
+`m ∈ [0,k)` computes `kx+m` with exit `m′ = ⌊(kx+m)/N⌋`; imposing
+`m′ = k−1−m` and reducing mod `N+1` (where `N ≡ −1`) forces
+`out ≡ kx+k−1`, i.e. `v_out ≡ k·v (mod N+1)`; the linear relation
+`m(N+1) = (k−1)N + out − kx` then has exactly one solution `m ∈ [0, k)`
+with `out ∈ [0, N)` for each `x` — except when `k·v ≡ 0 (mod N+1)`, the
+holes. ∎
+
+The family is symmetric around the open ring, and the two closures fail
+in dual ways: **mod N−1 has a double zero** (the seam — Proposition
+10.4's Jordan pump), **mod N+1 has a missing zero** (the hole — its
+traced identity is the unilateral shift `Σ_{x<N−1} |x+1⟩⟨x|`, a *drain*
+under which the uniform state obeys the exact law
+`‖T_σ^k · u‖² = (N−k)/N`, measured to six digits). The same input
+`x = N−1−c` hits both defects. Unitarity on each closed ring is governed
+by gcd against *that* ring: on `[2,3,4,3]` — `N = 72`, flanked by the
+twin primes 71 and 73 — both closures are fields and heal every open
+obstruction (`×6`: defect `0.833 → ≤ 10⁻¹⁶` both ways); `×5` is unitary
+open but breaks on the twist ring `25 = 5²`; and the diamond's twist ring
+`2881 = 43·67` exhibits its factorization operationally as collisions
+plus holes, branch by branch (`examples/boundary_twists.rs`). Primality
+of `N ∓ 1` is a design criterion *selectable by profile*.
+
 The taxonomy of boundary conditions, assembled:
 
 ```text
 entry        exit         semantics
 Fixed(0)     SumAll       mod-N arithmetic (drop the wrap)          §8
 SumAll       Fixed(0)     postselected exact division = ×k⁻¹        §8.7
-looped (trace)            mod N−1 arithmetic + seam attractor       §10
+looped (σ = id)           mod N−1 arithmetic + seam attractor       §10.2–5
+looped (σ = reversal)     mod N+1 diminished-one + hole drain       §10.6
 ```
 
-One machine body, three operator categories — unitary arithmetic, unitary
-inverse arithmetic by dual sweep, and non-unitary dynamical system — all
-selected by vectors on a bond of dimension `k`.
+One machine body, an operator category per boundary — unitary arithmetic
+in three different rings, unitary inverse arithmetic by dual sweep, and
+non-unitary dynamical systems with designed defects (a seam that repairs,
+a hole that drains) — all selected by vectors, and one permutation, on a
+bond of dimension `k`.
 
 
 ## 11. Numerical foundations
@@ -1015,9 +1141,10 @@ and, orthogonally, that **number theory surfaces as operator properties**:
 ```text
 gcd(k, N) = g            ↔   unitarity defect 1 − 1/g               (Prop 8.3)
 k mod S, gcd with L      ↔   operator width across the cut          (Thm 8.5)
-N − 1 prime              ↔   looped machine exactly unitary         (Cor 10.3)
+N ∓ 1 prime              ↔   closed (looped/twisted) machine unitary (Cor 10.3, Thm 10.7)
 quadratic Gauss sums     ↔   near-orthogonality of imputations      (Prop 9.6)
 ones'-complement seam    ↔   Jordan block, 1/(k²+1) stabilization   (Prop 10.4)
+F⁴ = I                   ↔   the QFT's own flow, four operators deep (Prop 9.7)
 ```
 
 with two independent budgets — geometric rank (Prop 2.1) and spectral
@@ -1026,22 +1153,33 @@ weight (§7.4) — governing what any of it costs.
 Problems this document sharpens beyond the README's open directions:
 
 1. **The width function of multiplication.** Theorem 8.5 reduces
-   `k ↦ χ_cut(M_k)` to the counting problem `|{⌊kb/S⌋ mod L}|`. Its full
-   arithmetic structure (as `k` runs over a squaring orbit; extremal and
-   average behaviour over cuts of a wave) is open and looks like elementary
-   number theory with a payoff: an a-priori cost calculus for modular
-   exponentiation on chains.
-2. **Is the dual sweep always optimal?** Every measured operator in the
-   affine family attains its intrinsic width via one of the two geometric
-   dualities (sweep reversal, ring reflection). Conjecture: for streamed
-   permutations of `Z_N`, the minimum over {forward machine, opposed
-   machine, reflected machine} attains the cut rank. A counterexample would
-   be at least as interesting as a proof.
-3. **Flows beyond the shift family.** `FourierFlow` diagonalizes the adder
-   family in the frame `V`; fractional powers of `V` itself (a fractional
-   Fourier transform over `Z_N` as an MPO flow) require `V`'s eigenframe —
-   and would test whether "width sees structure" (finding 12) generalizes
-   from arithmetic quantization to frame quantization.
+   `k ↦ χ_cut(M_k)` to the counting problem `|{⌊kb/S⌋ mod L}|`, and the
+   `width` module now computes it wholesale — the full atlas of `Z_2880`
+   and the wave's squaring orbits (finding 20, §8.10). What remains open
+   is the *closed form*: the `k ≤ S` and `k ≡ 1 (mod S)` regimes are
+   solved (`min(k, L)` and `L/gcd(a, L)`), but the general `k > S` count
+   is still enumeration, and the atlas's measured structure (87%
+   cap-saturation, the width-2/3 resonant tail) awaits a theorem — as does
+   the atlas for streamed permutations beyond the affine family.
+2. **The alphabet gap.** The first edition conjectured that some dual
+   sweep always "attains the cut rank" — trivially true as stated, since
+   Theorem 8.5's `Γ` *is* the forward machine's realized crossing set.
+   The atlas reframes the real question and answers it negatively: 584 of
+   768 multipliers on `Z_2880` have intrinsic width below every
+   single-front *construction alphabet* `min(k, k⁻¹, N−k, (N−k)⁻¹)` by a
+   factor > 8 — extreme case `×1441`, width 2 against alphabet 1439
+   (§8.10). Open: a machine model whose construction alphabet meets the
+   intrinsic width — multi-front sweeps, branching messages, or a
+   composition calculus with certified intermediate widths.
+3. **Flows beyond finite-order frames.** For the standard-order QFT the
+   problem dissolved: `F⁴ = I` makes `F^t` an exact four-term operator
+   combination, no eigenframe needed (Proposition 9.7, finding 22). The
+   genuinely open cases: frames without small order — the reversed-digit
+   frame `V = ρ∘F` obeys no low power identity in general, so its
+   fractional flow needs an actual eigenframe — and frame flows *at wave
+   scale*, where the standard-order frame is unavailable (the reversal
+   stage saturates χ) and a reversal-free fractional transform is the
+   missing object.
 4. **Width-optimal imputation.** Proposition 9.6 shows factorization routes
    with identical endpoints and `O(1/N²)` mutual overlap; the causal route
    beat the geodesic by `χ = 8` vs `11`. Characterize the minimal-width
@@ -1051,11 +1189,16 @@ Problems this document sharpens beyond the README's open directions:
    finite-`N` participation of the Dirichlet kernel should admit a closed
    form (the measured values match the limit to 4 digits already at
    `N = 2880`).
-6. **The boundary-design calculus.** §10 exhibits three boundary regimes
-   with qualitatively different operator categories. A systematic theory —
-   which rings, attractors, and convergence laws are reachable by boundary
-   engineering alone, for a *fixed* transducer body — is wide open, and the
-   `stabilize` layer is the instrument built to explore it.
+6. **The boundary-design calculus.** §10 now exhibits *four* boundary
+   regimes, and the twist axis is partly mapped: the identity and reversal
+   twists yield mod `N−1` and mod `N+1` arithmetic (Theorem 10.7,
+   finding 21). Open: the remaining twists (a general `σ` mixes affine
+   branches over different domains — what algebra do they generate?),
+   weighted and partial traces interpolating open ↔ closed, and *coupled*
+   loops feeding one machine's exit into another's entry. Which rings,
+   attractors, and convergence laws are reachable by boundary engineering
+   alone, for a fixed transducer body, remains wide open — but the
+   instrument set now includes the twist.
 
 
 ## References
@@ -1095,3 +1238,15 @@ randomness*, SIAM Review **53**, 217 (2011).
 
 [11] F. Mezzadri, *How to generate random matrices from the classical
 compact groups*, Notices Amer. Math. Soc. **54**, 592 (2007).
+
+[12] J. H. McClellan and T. W. Parks, *Eigenvalue and eigenvector
+decomposition of the discrete Fourier transform*, IEEE Trans. Audio
+Electroacoust. **20**, 66 (1972); Ç. Candan, M. A. Kutay, and
+H. M. Ozaktas, *The discrete fractional Fourier transform*, IEEE Trans.
+Signal Process. **48**, 1329 (2000).
+
+[13] R. C. Agarwal and C. S. Burrus, *Fast convolution using Fermat number
+transforms with applications to digital filtering*, IEEE Trans. Acoust.
+Speech Signal Process. **22**, 87 (1974); L. M. Leibowitz, *A simplified
+binary arithmetic for the Fermat number transform*, IEEE Trans. Acoust.
+Speech Signal Process. **24**, 356 (1976).

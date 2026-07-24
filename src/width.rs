@@ -1,0 +1,258 @@
+//! The **a-priori width calculus** of streamed permutations: the operator
+//! Schmidt rank of modular multiplication across a chain cut, computed from
+//! pure number theory — no tensors involved.
+//!
+//! For a cut splitting the chain into a left ring of size `L` and a right
+//! block of size `S` (`N = L·S`), the multiplier `M_k : |x⟩ → |k·x mod N⟩`
+//! factors branch-wise over the *crossing message* — the multiplication
+//! carry entering the cut:
+//!
+//! ```text
+//!   x = a·S + b   ⇒   M_k |a, b⟩ = |(k·a + c(b)) mod L,  k·b mod S⟩,
+//!   c(b) = ⌊k·b / S⌋,
+//! ```
+//!
+//! and the operator Schmidt rank across the cut is **exactly**
+//! `|{c(b) mod L : b ∈ [0, S)}|` (the cut-rank theorem, THEORY.md §8).
+//! The bond dimension of the exactly-recompressed cascade MPO is therefore
+//! a number computable *in advance*; the tests pin the two against each
+//! other bond-for-bond, including through operator composition.
+//!
+//! Two regimes:
+//!
+//! * `k ≤ S` — `b ↦ ⌊kb/S⌋` steps by 0 or 1 and reaches `k−1`, so it is a
+//!   surjection onto `[0, k)`: the width is `min(k, L)` in closed form.
+//! * `k > S` — the sequence skips and number theory takes over (this is
+//!   where the resonances of README finding 16 live: `×2401` thinner than
+//!   `×7`); the width is found by enumerating the `S` crossing values.
+//!
+//! `k` may always be reduced mod `N`: replacing `k` by `k + LS` changes
+//! `c(b)` by `L·b ≡ 0 (mod L)`.
+
+use std::collections::HashSet;
+
+/// Largest right-block size the enumerating branch will scan. Mid-chain
+/// cuts of the 25-site wave (`S ≈ 4.1·10⁶`) stay inside, so every bond of
+/// the wave is exactly computable from one side or the other.
+pub const ENUM_LIMIT: u128 = 8_000_000;
+
+/// A per-cut width statement: exact rank, or only the a-priori bound.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Width {
+    /// The exact operator Schmidt rank across the cut.
+    Exact(u128),
+    /// Only the bound `min(k mod N, L, S)`: the crossing set was too large
+    /// to enumerate and no closed form applies (`k > S > ENUM_LIMIT`).
+    UpperBound(u128),
+}
+
+impl Width {
+    pub fn value(self) -> u128 {
+        match self {
+            Width::Exact(v) | Width::UpperBound(v) => v,
+        }
+    }
+
+    pub fn is_exact(self) -> bool {
+        matches!(self, Width::Exact(_))
+    }
+}
+
+impl std::fmt::Display for Width {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Width::Exact(v) => write!(f, "{}", v),
+            Width::UpperBound(v) => write!(f, "≤{}", v),
+        }
+    }
+}
+
+/// Operator width of `×k` across a cut with left ring `l` and right block
+/// `s`: the count `|{⌊k·b/s⌋ mod l : b ∈ [0, s)}|`. Equals the operator
+/// Schmidt rank of the multiplier across the cut when `gcd(k, l·s) = 1`
+/// (the count is well-defined regardless).
+pub fn mult_cut_width(k: u128, l: u128, s: u128) -> Width {
+    assert!(l >= 1 && s >= 1, "cut sizes must be positive");
+    let k = k % (l * s);
+    if k == 0 {
+        return Width::Exact(1);
+    }
+    if k <= s {
+        return Width::Exact(k.min(l));
+    }
+    if s <= ENUM_LIMIT {
+        // Count distinct residues with a bitset when the left ring is
+        // small enough; fall back to hashing for huge L (where the count
+        // is bounded by s anyway).
+        const BITSET_LIMIT: u128 = 1 << 25;
+        let count = if l <= BITSET_LIMIT {
+            let mut seen = vec![false; l as usize];
+            let mut count = 0u128;
+            for b in 0..s {
+                let c = ((k * b / s) % l) as usize;
+                if !seen[c] {
+                    seen[c] = true;
+                    count += 1;
+                }
+            }
+            count
+        } else {
+            let mut seen: HashSet<u128> = HashSet::new();
+            for b in 0..s {
+                seen.insert((k * b / s) % l);
+            }
+            seen.len() as u128
+        };
+        return Width::Exact(count);
+    }
+    Width::UpperBound(k.min(l).min(s))
+}
+
+/// Per-bond width profile of `×k` on a dimension profile: entry `m` is the
+/// width across the bond between sites `m` and `m+1` (left ring
+/// `Π_{i≤m} d_i`, right block `Π_{i>m} d_i`).
+pub fn mult_width_profile(profile: &[usize], k: u128) -> Vec<Width> {
+    let n: u128 = profile.iter().map(|&d| d as u128).product();
+    let mut left = 1u128;
+    profile[..profile.len() - 1]
+        .iter()
+        .map(|&d| {
+            left *= d as u128;
+            mult_cut_width(k, left, n / left)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cascade::Transducer;
+    use crate::mat::TruncSpec;
+    use crate::zigzag;
+
+    /// Direct enumeration, used to pin the closed-form branch.
+    fn enumerated(k: u128, l: u128, s: u128) -> u128 {
+        let k = k % (l * s);
+        let mut seen: HashSet<u128> = HashSet::new();
+        for b in 0..s {
+            seen.insert((k * b / s) % l);
+        }
+        seen.len() as u128
+    }
+
+    fn mod_inverse(k: u128, n: u128) -> u128 {
+        let (mut old_r, mut r) = (k as i128, n as i128);
+        let (mut old_s, mut s) = (1i128, 0i128);
+        while r != 0 {
+            let q = old_r / r;
+            (old_r, r) = (r, old_r - q * r);
+            (old_s, s) = (s, old_s - q * s);
+        }
+        assert_eq!(old_r, 1, "gcd(k, n) must be 1");
+        old_s.rem_euclid(n as i128) as u128
+    }
+
+    #[test]
+    fn closed_form_matches_enumeration_when_k_is_small() {
+        for l in [2u128, 6, 24, 120] {
+            for s in [6u128, 24, 120] {
+                for k in [1u128, 2, 3, 5, s - 1, s] {
+                    assert_eq!(
+                        mult_cut_width(k, l, s).value(),
+                        enumerated(k, l, s),
+                        "k={} l={} s={}",
+                        k,
+                        l,
+                        s
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn known_resonances_at_the_diamond_waist() {
+        // (L, S) = (24, 120): the waist cut of diamond(2, 5), README
+        // finding 16 measured widths 7 → 24 → 6 → 3 along the squaring
+        // orbit of 7, and 7 for the inverse multiplier 823.
+        for (k, expect) in [(7u128, 7u128), (49, 24), (2401, 6), (1921, 3), (823, 7)] {
+            let w = mult_cut_width(k, 24, 120);
+            assert!(w.is_exact());
+            assert_eq!(w.value(), expect, "k={}", k);
+        }
+    }
+
+    #[test]
+    fn width_is_symmetric_under_inversion() {
+        // rank(A) = rank(A†) and M_k† = M_{k⁻¹}: the count must agree.
+        let n = 2880u128;
+        for k in [7u128, 11, 49, 121, 823, 2401] {
+            let ki = mod_inverse(k, n);
+            assert_eq!(
+                mult_cut_width(k, 24, 120).value(),
+                mult_cut_width(ki, 24, 120).value(),
+                "k={} k⁻¹={}",
+                k,
+                ki
+            );
+        }
+    }
+
+    #[test]
+    fn atlas_matches_recompressed_cascade_bonds() {
+        // The theorem, executed: exactly-recompressed cascade MPO bond
+        // dimensions equal the number-theoretic prediction, bond for bond.
+        let cases: Vec<(Vec<usize>, Vec<usize>)> = vec![
+            (vec![2, 3, 4], vec![5, 7, 11]),
+            (vec![2, 3, 4, 3], vec![5, 7, 29]),
+            (zigzag::diamond(2, 4), vec![7, 11, 49]),
+        ];
+        for (profile, ks) in cases {
+            for k in ks {
+                let m = Transducer::mult(&profile, k).to_mpo(TruncSpec::exact());
+                let predicted: Vec<u128> = mult_width_profile(&profile, k as u128)
+                    .into_iter()
+                    .map(|w| {
+                        assert!(w.is_exact());
+                        w.value()
+                    })
+                    .collect();
+                let measured: Vec<u128> =
+                    m.bond_dims().iter().map(|&b| b as u128).collect();
+                assert_eq!(measured, predicted, "profile {:?} k {}", profile, k);
+            }
+        }
+    }
+
+    #[test]
+    fn composition_realizes_the_predicted_resonance() {
+        // ×49 = ×7 ∘ ×7 on diamond(2, 4): the atlas predicts [2,3,3,2] —
+        // narrower than ×7 itself ([2,6,6,2]) and far below the message
+        // bound 49. Exact recompression of the composed operator must land
+        // exactly there, and match the directly built ×49.
+        let profile = zigzag::diamond(2, 4);
+        let exact = TruncSpec::exact();
+        let m7 = Transducer::mult(&profile, 7).to_mpo(exact);
+        assert_eq!(m7.bond_dims(), vec![2, 6, 6, 2]);
+        let m49 = m7.compose_after(&m7, exact);
+        let predicted: Vec<usize> = mult_width_profile(&profile, 49)
+            .into_iter()
+            .map(|w| w.value() as usize)
+            .collect();
+        assert_eq!(predicted, vec![2, 3, 3, 2]);
+        assert_eq!(m49.bond_dims(), predicted);
+        let direct = Transducer::mult(&profile, 49).to_mpo(exact);
+        assert!((m49.hs_fidelity(&direct) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reduction_mod_n_is_sound() {
+        // c(b) changes by L·b ≡ 0 (mod L) when k gains a multiple of N.
+        for k in [5u128, 49, 823] {
+            assert_eq!(
+                mult_cut_width(k, 24, 120).value(),
+                mult_cut_width(k + 2880, 24, 120).value()
+            );
+        }
+    }
+}

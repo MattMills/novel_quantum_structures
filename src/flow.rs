@@ -28,10 +28,15 @@
 //! adaptive temporal resolution — coarse far from the cursor, increasingly
 //! fine at it.
 
+use crate::c64::C64;
+use crate::cascade::Transducer;
+use crate::circuit::Circuit;
+use crate::gates;
 use crate::mat::TruncSpec;
 use crate::mpo::Mpo;
 use crate::mps::Mps;
 use crate::radix;
+use std::f64::consts::PI;
 
 /// A one-parameter operator flow `t ↦ V† · D(t·c) · V` over a qudit chain's
 /// ring, realized in the reversed-digit Fourier frame. `at(1.0)` is the
@@ -183,10 +188,95 @@ impl<'a> WidthCursor<'a> {
     }
 }
 
+/// A one-parameter flow through the **Fourier frame itself**: fractional
+/// powers of the mixed-radix QFT `F` over `Z_N` (standard digit order,
+/// palindromic profiles).
+///
+/// `F⁴ = I` on any `Z_N`, so `F`'s spectral projectors are *polynomials in
+/// `F`* — `P_j = ¼ Σ_m i^{−jm} F^m` — and the matrix-power fractional
+/// Fourier transform needs no eigensolver at all:
+///
+/// ```text
+///   F^t = Σ_j i^{j·t} P_j = Σ_{m=0}^{3} c_m(t) · F^m,
+///   c_m(t) = ¼ Σ_{j=0}^{3} e^{iπ·j·(t−m)/2},
+/// ```
+///
+/// a four-term operator linear combination of blocks the crate already
+/// owns: `I`, `F`, `F²` — which is the **ring reflection** `x → −x`, a
+/// machine of width 2 (`complement` then `+1`, cf. [`crate::cascade`]) —
+/// and `F³ = F†`. [`Mpo::add`]/[`Mpo::scale`] assemble it; the result is
+/// an exact one-parameter group of period 4 (`F^s ∘ F^t = F^{s+t}`), with
+/// every snapshot unitary.
+///
+/// The width story differs instructively from [`FourierFlow`]: operator
+/// *entanglement* is pinned to the pure-power value at **every** integer
+/// `t` (an extremum each time), but bond dimension collapses only at
+/// `t ≡ 0, 2 (mod 4)` — where the pure power (`I`, reflection) sits
+/// *below* the geometric cap. `F` itself saturates the cap, so at odd
+/// integers rank has nothing to collapse to: width sees the frame exactly
+/// where the frame is narrower than the geometry (see
+/// `examples/fractional_fourier.rs`).
+pub struct FrameFlow {
+    pub profile: Vec<usize>,
+    pub trunc: TruncSpec,
+    /// `F^m` for `m = 0..4`: identity, `F`, ring reflection, `F†`.
+    pub powers: [Mpo; 4],
+}
+
+impl FrameFlow {
+    /// Build the flow of the standard-order mixed-radix QFT (compiles `F`
+    /// once; needs a palindromic profile for the digit-reversal stage).
+    pub fn qft(profile: &[usize], trunc: TruncSpec) -> FrameFlow {
+        let f = Mpo::from_circuit(&radix::mixed_radix_qft(profile, 0.0), trunc);
+        // F² = the ring reflection x → −x, built directly at machine
+        // width 2 (complement then +1) — verified against F ∘ F in tests.
+        let mut comp = Circuit::new(profile.to_vec());
+        for (i, &d) in profile.iter().enumerate() {
+            comp.one(i, gates::complement(d));
+        }
+        let neg = Transducer::adder(profile, 1)
+            .to_mpo(trunc)
+            .compose_after(&Mpo::from_circuit(&comp, trunc), trunc);
+        let id = Mpo::identity(profile, trunc);
+        let f_dag = f.adjoint();
+        FrameFlow {
+            profile: profile.to_vec(),
+            trunc,
+            powers: [id, f, neg, f_dag],
+        }
+    }
+
+    /// The projector-combination coefficient `c_m(t)`.
+    pub fn coefficient(t: f64, m: usize) -> C64 {
+        let mut c = C64::ZERO;
+        for j in 0..4 {
+            c += C64::cis(PI * j as f64 * (t - m as f64) / 2.0);
+        }
+        c.scale(0.25)
+    }
+
+    /// The flow snapshot `F^t` (period 4; integer `t` reproduces the pure
+    /// powers exactly).
+    pub fn at(&self, t: f64) -> Mpo {
+        let mut acc: Option<Mpo> = None;
+        for (m, p) in self.powers.iter().enumerate() {
+            let c = FrameFlow::coefficient(t, m);
+            if c.abs() < 1e-13 {
+                continue;
+            }
+            let term = p.scale(c);
+            acc = Some(match acc {
+                None => term,
+                Some(a) => a.add(&term, self.trunc),
+            });
+        }
+        acc.expect("at least one projector coefficient is nonzero")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::c64::C64;
     use crate::dense::{total_dim, DenseState};
     use crate::zigzag;
 
@@ -348,5 +438,46 @@ mod tests {
         // Endpoint fully localized on x0 + 1.
         let final_dense = traj[4].to_dense();
         assert!((final_dense.amps[(x0 + 1) % n_total].abs() - 1.0).abs() < 1e-7);
+    }
+
+    #[test]
+    fn frame_flow_hits_the_pure_powers_at_integers() {
+        let profile = vec![2usize, 3, 2]; // palindromic, N = 12
+        let flow = FrameFlow::qft(&profile, SPEC);
+        let id = Mpo::identity(&profile, SPEC);
+        for (t, m) in [(0.0, 0usize), (1.0, 1), (2.0, 2), (3.0, 3), (4.0, 0)] {
+            let f = flow.at(t).hs_fidelity(&flow.powers[m]);
+            assert!((f - 1.0).abs() < 1e-8, "t={}: {}", t, f);
+        }
+        assert!((flow.at(0.0).hs_fidelity(&id) - 1.0).abs() < 1e-8);
+        // F² really is the ring reflection (the width-2 machine).
+        let ff = flow.powers[1].compose_after(&flow.powers[1], SPEC);
+        let f2 = ff.hs_fidelity(&flow.powers[2]);
+        assert!((f2 - 1.0).abs() < 1e-8, "F∘F vs reflection: {}", f2);
+        assert!(flow.powers[2].max_bond_dim() <= 2);
+    }
+
+    #[test]
+    fn frame_flow_group_law_and_unitarity() {
+        let profile = vec![2usize, 3, 2];
+        let flow = FrameFlow::qft(&profile, SPEC);
+        let half = flow.at(0.5);
+        let f = half.compose_after(&half, SPEC).hs_fidelity(&flow.powers[1]);
+        assert!((f - 1.0).abs() < 1e-7, "F^½ ∘ F^½ vs F: {}", f);
+        let f2 = flow
+            .at(1.25)
+            .compose_after(&flow.at(0.5), SPEC)
+            .hs_fidelity(&flow.at(1.75));
+        assert!((f2 - 1.0).abs() < 1e-7, "group law: {}", f2);
+        // Fractional snapshots are unitary: norm preserved on a random state.
+        let mut rng = crate::mat::Rng::new(31);
+        let mut dense = DenseState::zero_state(&profile);
+        for amp in &mut dense.amps {
+            *amp = rng.c_gaussian();
+        }
+        dense.normalize();
+        let psi = Mps::from_dense(&dense, SPEC);
+        let out = flow.at(0.7).apply_to(&psi);
+        assert!((out.norm() - 1.0).abs() < 1e-8, "norm {}", out.norm());
     }
 }
