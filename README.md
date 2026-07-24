@@ -6,6 +6,9 @@ heterogeneous-dimension quantum structures.**
 > **[THEORY.md](THEORY.md)** derives the mathematics behind every finding
 > below — definitions, propositions, and proofs, each tied to the module
 > that implements it and the example that measures it.
+> **[COMPLEXITY.md](COMPLEXITY.md)** measures the work and output of every
+> object and sorts them into complexity classes by how their bond
+> dimension grows.
 
 This library explores a question: what happens if a qudit chain's local
 dimension *expands and collapses* along the chain — qubit → qutrit → 4-dit →
@@ -528,6 +531,7 @@ cargo run --release --example shor_kernel
 cargo run --release --example crossing_vees
 cargo run --release --example crossing_networks
 cargo run --release --example renormalizing_crossings
+cargo run --release --example complexity_census
 ```
 
 No dependencies; builds with any reasonably recent stable Rust.
