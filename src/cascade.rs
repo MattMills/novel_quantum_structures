@@ -152,6 +152,82 @@ impl Transducer {
         }
     }
 
+    /// [`Transducer::mult`] with an explicitly **widened message alphabet**
+    /// `msg_dim ≥ k`: the per-site rule is the same digit-carry bijection
+    /// `v = k·digit_in + carry_in`, defined for every `carry_in < msg_dim`.
+    /// The alphabet is closed under the rules for any `msg_dim ≥ k`
+    /// (`carry_out = ⌊(k(d−1) + msg_dim−1)/d⌋ ≤ msg_dim−1` exactly when
+    /// `msg_dim ≥ k`), and the standard-boundary MPO is unchanged — the
+    /// extra states are dead until a boundary condition can reach them.
+    /// That is their purpose: the **scaled loop**
+    /// ([`Transducer::to_mpo_looped_scaled`]) re-enters the exiting wrap
+    /// `w` as a carry `r·w`, which needs entry states up to `r·(k−1)` — or
+    /// `r·k` when the seam branch `(r·k → k)` is included. Build with
+    /// `msg_dim = r·k + 1` for the full mod `N−r` semantics.
+    pub fn mult_wide(profile: &[usize], k: usize, msg_dim: usize) -> Transducer {
+        assert!(k >= 1, "k must be positive");
+        assert!(msg_dim >= k, "alphabet must contain the working carries [0, k)");
+        assert!(
+            msg_dim <= 4096,
+            "widened alphabets are for modest r·k; compose cascades for more"
+        );
+        let rules = profile
+            .iter()
+            .map(|&d| {
+                let mut r = vec![(0usize, 0usize); msg_dim * d];
+                for msg_in in 0..msg_dim {
+                    for p_in in 0..d {
+                        let v = k * p_in + msg_in;
+                        r[msg_in * d + p_in] = (v / d, v % d);
+                    }
+                }
+                r
+            })
+            .collect();
+        Transducer {
+            profile: profile.to_vec(),
+            msg_dim,
+            rules,
+            direction: Direction::RightToLeft,
+        }
+    }
+
+    /// [`Transducer::adder`] with a widened carry alphabet `msg_dim ≥ 2`
+    /// (closed for every `msg_dim ≥ 2`), the additive companion of
+    /// [`Transducer::mult_wide`]: the scaled loop of `+c` at scale `r`
+    /// needs entry carries `{0, r}`, so build with `msg_dim = r + 1`.
+    pub fn adder_wide(profile: &[usize], c_add: u128, msg_dim: usize) -> Transducer {
+        assert!(msg_dim >= 2, "the adder needs at least the carry bit");
+        let n = profile.len();
+        let big_n: u128 = profile.iter().map(|&d| d as u128).product();
+        let mut rem = c_add % big_n;
+        let mut c_digits = vec![0usize; n];
+        for i in (0..n).rev() {
+            c_digits[i] = (rem % profile[i] as u128) as usize;
+            rem /= profile[i] as u128;
+        }
+        let rules = profile
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| {
+                let mut r = vec![(0usize, 0usize); msg_dim * d];
+                for msg_in in 0..msg_dim {
+                    for p_in in 0..d {
+                        let v = p_in + c_digits[i] + msg_in;
+                        r[msg_in * d + p_in] = (v / d, v % d);
+                    }
+                }
+                r
+            })
+            .collect();
+        Transducer {
+            profile: profile.to_vec(),
+            msg_dim,
+            rules,
+            direction: Direction::RightToLeft,
+        }
+    }
+
     /// [`Transducer::mult`] acting on the sub-ring of every site **except**
     /// `skip`, which passes both its digit and the message through
     /// unchanged. The lifted operator is exactly
@@ -312,6 +388,57 @@ impl Transducer {
             });
         }
         acc.expect("msg_dim >= 1")
+    }
+
+    /// The **scaled loop**: the exiting message `e` is fed back into the
+    /// entry *multiplied by `r`*, `M = Σ_e ⟨e| machine |r·e⟩` (sum over
+    /// every exit state `e` with `r·e` inside the alphabet).
+    ///
+    /// Where the straight loop (`r = 1`) selects mod `N−1` and the
+    /// reversal twist selects mod `N+1`, the scaled loop selects
+    /// **mod `N−r`** — the whole *pseudo-Mersenne family* of the chain's
+    /// ring, the mixed-radix generalization of the `2^n − r` moduli of
+    /// Crandall/Solinas reduction. The arithmetic: a carry machine for
+    /// `+c` or `×k` over `Z_N` exits with the wrap count `w = ⌊result/N⌋`,
+    /// and since `N ≡ r (mod N−r)`, dropping `w·N` is wrong mod `N−r` by
+    /// exactly `+w·r` — which is what re-entering the carry `r·w` restores:
+    ///
+    /// ```text
+    ///   branch e:  x ↦ base(x) + r·e − e·N   kept iff ⌊(base(x)+r·e)/N⌋ = e
+    /// ```
+    ///
+    /// so every surviving branch output is ≡ `base(x) (mod N−r)`, on the
+    /// **redundant domain** `[0, N)` covering `Z_{N−r}` with the top `r`
+    /// chain states doubling `[0, r)`. For each input at least one branch
+    /// survives; inputs whose canonical result lands within `r` of the
+    /// wrap seam keep *two* branches (both representatives — the
+    /// generalized seam, an `r`-wide version of the straight loop's double
+    /// zero), at number-theoretically determined input counts.
+    ///
+    /// Alphabet contract: the machine must hold the re-entered carries —
+    /// build [`Transducer::mult_wide`] with `msg_dim = r·k + 1` (so the
+    /// seam branch `(r·k → k)`, which maps the doubled top states like
+    /// their canonical partners, is included) or
+    /// [`Transducer::adder_wide`] with `msg_dim = r + 1`. On the *native*
+    /// alphabet (`msg_dim = k`) and `r = 1` this reproduces
+    /// [`Transducer::to_mpo_looped`] exactly.
+    ///
+    /// Truncation note: as with the twisted loop, the branch sum can
+    /// transiently need bond dimension near the geometric cap — supply a
+    /// rank cap that accommodates it.
+    pub fn to_mpo_looped_scaled(&self, r: usize, trunc: TruncSpec) -> Mpo {
+        assert!(r >= 1, "the scale must be positive (r = 1 is the straight loop)");
+        let mut acc: Option<Mpo> = None;
+        let mut e = 0usize;
+        while e * r < self.msg_dim {
+            let branch = self.to_mpo_with(Boundary::Fixed(e * r), Boundary::Fixed(e), trunc);
+            acc = Some(match acc {
+                None => branch,
+                Some(a) => a.add(&branch, trunc),
+            });
+            e += 1;
+        }
+        acc.expect("alphabet is non-empty")
     }
 
     /// Lift the transducer to an MPO with the standard machine boundaries:
@@ -823,5 +950,130 @@ mod tests {
             Transducer::mult_directed(&profile, k_inv, Direction::LeftToRight).to_mpo(SPEC);
         let f = conj.hs_fidelity(&mk_inv_rev);
         assert!((f - 1.0).abs() < 1e-7, "V∘M5∘V† vs reversed M29: {}", f);
+    }
+
+    #[test]
+    fn widened_alphabets_leave_the_open_machine_unchanged() {
+        // The extra message states are unreachable from the standard
+        // boundaries: the exact recompression drops them and the operator
+        // is bit-identical in bond profile and Hilbert–Schmidt overlap.
+        let profile = vec![2usize, 3, 4, 3];
+        let narrow = Transducer::mult(&profile, 5).to_mpo(SPEC);
+        let wide = Transducer::mult_wide(&profile, 5, 17).to_mpo(SPEC);
+        assert_eq!(narrow.bond_dims(), wide.bond_dims());
+        assert!((narrow.hs_fidelity(&wide) - 1.0).abs() < 1e-10);
+        let a_narrow = Transducer::adder(&profile, 13).to_mpo(SPEC);
+        let a_wide = Transducer::adder_wide(&profile, 13, 6).to_mpo(SPEC);
+        assert!((a_narrow.hs_fidelity(&a_wide) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn scaled_loop_matches_the_branch_formula() {
+        // The scaled loop is exactly Σ_e ⟨e| machine |r·e⟩: on every basis
+        // state, branch e contributes |k·x + r·e − e·N⟩ iff
+        // ⌊(k·x + r·e)/N⌋ = e — and every surviving output is ≡ k·x
+        // (mod N−r). Verified amplitude-for-amplitude, including the
+        // gcd-healing case ×6 (6-to-1 on Z_72, a bijection mod 65).
+        let profile = vec![2usize, 3, 4, 3]; // N = 72
+        let n = total_dim(&profile) as usize;
+        for (k, r) in [(7usize, 2usize), (5, 3), (6, 7)] {
+            let m_ring = n - r;
+            let looped = Transducer::mult_wide(&profile, k, r * k + 1)
+                .to_mpo_looped_scaled(r, SPEC);
+            for x in 0..n {
+                let out = looped.apply_to(&basis(&profile, x as u128)).to_dense();
+                let mut expect = vec![0.0f64; n];
+                let mut survivors = 0usize;
+                for e in 0..=k {
+                    if (k * x + r * e) / n == e {
+                        expect[k * x + r * e - e * n] += 1.0;
+                        survivors += 1;
+                    }
+                }
+                assert!(survivors >= 1, "k={} r={} x={}: no branch", k, r, x);
+                for y in 0..n {
+                    assert!(
+                        (out.amps[y].abs() - expect[y]).abs() < 1e-9,
+                        "k={} r={} x={} y={}: {} vs {}",
+                        k, r, x, y, out.amps[y].abs(), expect[y]
+                    );
+                    if expect[y] > 0.0 {
+                        assert_eq!(k * x % m_ring, y % m_ring, "congruence mod N−r");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scaled_loop_at_scale_one_on_the_native_alphabet_is_the_straight_loop() {
+        let profile = vec![2usize, 3, 4, 3];
+        let a = Transducer::mult(&profile, 7).to_mpo_looped_scaled(1, SPEC);
+        let b = Transducer::mult(&profile, 7).to_mpo_looped(SPEC);
+        assert_eq!(a.bond_dims(), b.bond_dims());
+        assert!((a.hs_fidelity(&b) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn adder_scaled_loop_matches_the_branch_formula() {
+        // +c mod (N−r): carries exit in {0, 1}, so the trace has two
+        // branches — (0 → 0) and (r → 1) — and the surviving outputs are
+        // ≡ x + c (mod N−r) on the redundant domain.
+        let profile = vec![2usize, 3, 4, 3]; // N = 72
+        let n = total_dim(&profile) as usize;
+        for (c, r) in [(41usize, 3usize), (5, 1), (68, 5)] {
+            let m_ring = n - r;
+            let looped =
+                Transducer::adder_wide(&profile, c as u128, r + 1).to_mpo_looped_scaled(r, SPEC);
+            for x in 0..n {
+                let out = looped.apply_to(&basis(&profile, x as u128)).to_dense();
+                let mut expect = vec![0.0f64; n];
+                for e in 0..=1usize {
+                    if (x + c + r * e) / n == e {
+                        expect[x + c + r * e - e * n] += 1.0;
+                    }
+                }
+                for y in 0..n {
+                    assert!(
+                        (out.amps[y].abs() - expect[y]).abs() < 1e-9,
+                        "c={} r={} x={} y={}",
+                        c, r, x, y
+                    );
+                    if expect[y] > 0.0 {
+                        assert_eq!((x + c) % m_ring, y % m_ring, "congruence mod N−r");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scaled_loop_realizes_the_pseudo_mersenne_ring_bijectively() {
+        // gcd(6, 72) = 6 makes the open ×6 badly non-unitary, but
+        // 65 = 72 − 7 has gcd(6, 65) = 1: restricted to canonical inputs
+        // x < 65, every input keeps at least one branch, every output is
+        // ≡ 6x (mod 65), and the canonical residues hit are a permutation
+        // of Z_65 — the boundary heals the operator into the foreign ring.
+        let profile = vec![2usize, 3, 4, 3];
+        let n = total_dim(&profile) as usize;
+        let (k, r) = (6usize, 7usize);
+        let m_ring = n - r;
+        let looped =
+            Transducer::mult_wide(&profile, k, r * k + 1).to_mpo_looped_scaled(r, SPEC);
+        let mut image = vec![false; m_ring];
+        for x in 0..m_ring {
+            let out = looped.apply_to(&basis(&profile, x as u128)).to_dense();
+            let mut found = false;
+            for y in 0..n {
+                if out.amps[y].abs() > 0.5 {
+                    assert_eq!(y % m_ring, k * x % m_ring);
+                    found = true;
+                }
+            }
+            assert!(found, "x={} lost", x);
+            assert!(!image[k * x % m_ring], "collision at {}", k * x % m_ring);
+            image[k * x % m_ring] = true;
+        }
+        assert!(image.iter().all(|&b| b), "not surjective on Z_65");
     }
 }

@@ -28,8 +28,24 @@
 //!
 //! `k` may always be reduced mod `N`: replacing `k` by `k + LS` changes
 //! `c(b)` by `L·b ≡ 0 (mod L)`.
+//!
+//! The counting theorem is a property of *ring-native* multiplication —
+//! the modulus and the chain agreeing on `N`. For any other permutation of
+//! `Z_N` — foreign-modulus multiplication `×k mod M` with `M ≠ N`
+//! ([`foreign_mult`]) chief among them — no closed form is known, and
+//! [`perm_cut_rank`] fills the gap: the exact operator Schmidt rank of an
+//! *arbitrary* permutation across a cut, computed from a Gram matrix on
+//! the smaller side of the cut, still with no tensors. This is the
+//! instrument behind the **reduction penalty** measurements
+//! (`examples/foreign_rings.rs`, THEORY.md §8.13): native multiplication
+//! costs its resonant width `w`, while foreign reduction costs `≈ (k+1)²`
+//! capped by the squared geometry — and at the boundary rings `N ∓ 1` it
+//! costs exactly the *square of the minimal opposed-front width*
+//! `(a + b − 1)²` over representations `k ≡ a·b⁻¹`.
 
-use std::collections::HashSet;
+use crate::c64::C64;
+use crate::mat::{svd, Mat};
+use std::collections::{HashMap, HashSet};
 
 /// Largest right-block size the enumerating branch will scan. Mid-chain
 /// cuts of the 25-site wave (`S ≈ 4.1·10⁶`) stay inside, so every bond of
@@ -121,6 +137,96 @@ pub fn mult_width_profile(profile: &[usize], k: u128) -> Vec<Width> {
             mult_cut_width(k, left, n / left)
         })
         .collect()
+}
+
+/// Exact operator Schmidt rank of an **arbitrary permutation** of
+/// `Z_{l·s}` across the cut with left ring `l` and right block `s` — the
+/// rank of the reshuffled 0/1 matrix `R[(a',a),(b',b)] = [π(a·s+b) =
+/// a'·s+b']`, whose closed form (`mult_cut_width`) exists only for
+/// ring-native multiplication.
+///
+/// Computed with no tensors: the `N = l·s` ones of `R` are grouped by
+/// their key on the larger side of the cut, the Gram matrix `G = R·Rᵀ` is
+/// accumulated over the smaller side's distinct keys (`≤ min(N, l², s²)`
+/// of them), and the rank is read from `G`'s spectrum (`G` is an integer
+/// PSD matrix, so its null space is exact and the spectral gap at zero is
+/// clean). Cost: `O(N)` to bin, `O(Σ group²) ≤ O(N·min(l,s))` to
+/// accumulate, one SVD of the small Gram. Feasible wherever `N` itself is
+/// enumerable — this is the instrument for permutations *outside* the
+/// native arithmetic family, where no a-priori counting formula is known.
+/// The tests pin it against `mult_width_profile` on the native family and
+/// against exactly-recompressed dense-Choi MPOs off it.
+pub fn perm_cut_rank<F: Fn(usize) -> usize>(l: usize, s: usize, perm: &F) -> usize {
+    assert!(l >= 1 && s >= 1, "cut sizes must be positive");
+    let n = l * s;
+    let mut groups: HashMap<u64, Vec<u32>> = HashMap::new();
+    let mut small_ids: HashMap<u64, u32> = HashMap::new();
+    let mut hit = vec![false; n];
+    for x in 0..n {
+        let y = perm(x);
+        assert!(y < n && !hit[y], "not a permutation of Z_{{l·s}}");
+        hit[y] = true;
+        let (a, b) = (x / s, x % s);
+        let (ap, bp) = (y / s, y % s);
+        let (small_key, large_key) = if l <= s {
+            ((ap * l + a) as u64, (bp * s + b) as u64)
+        } else {
+            ((bp * s + b) as u64, (ap * l + a) as u64)
+        };
+        let next = small_ids.len() as u32;
+        let id = *small_ids.entry(small_key).or_insert(next);
+        groups.entry(large_key).or_default().push(id);
+    }
+    let m = small_ids.len();
+    let mut g = Mat::zeros(m, m);
+    for ids in groups.values() {
+        for &r1 in ids {
+            for &r2 in ids {
+                let cur = g.at(r1 as usize, r2 as usize);
+                g.set(r1 as usize, r2 as usize, cur + C64::ONE);
+            }
+        }
+    }
+    let sv = svd(&g);
+    if sv.s.is_empty() || sv.s[0] <= 0.0 {
+        return 0;
+    }
+    let tol = sv.s[0] * (m as f64) * 1e-12;
+    sv.s.iter().filter(|&&v| v > tol).count()
+}
+
+/// Per-bond operator Schmidt ranks of a permutation on a dimension
+/// profile — [`perm_cut_rank`] across every bond.
+pub fn perm_width_profile<F: Fn(usize) -> usize>(profile: &[usize], perm: &F) -> Vec<usize> {
+    let n: usize = profile.iter().product();
+    let mut left = 1usize;
+    profile[..profile.len() - 1]
+        .iter()
+        .map(|&d| {
+            left *= d;
+            perm_cut_rank(left, n / left, perm)
+        })
+        .collect()
+}
+
+/// The **foreign multiplier**: `x → k·x mod m` on `[0, m)`, identity on
+/// the tail `[m, n)` — modular multiplication in a ring the chain does
+/// *not* natively carry, extended to a permutation of the chain's own
+/// `Z_n`. Requires `gcd(k, m) = 1` (else it is not a permutation) and
+/// `m ≤ n`. This is the object whose cut ranks measure the *reduction
+/// penalty* of foreign-modulus arithmetic (`examples/foreign_rings.rs`).
+pub fn foreign_mult(n: usize, k: usize, m: usize) -> impl Fn(usize) -> usize {
+    assert!(m >= 1 && m <= n, "foreign modulus must satisfy 1 ≤ m ≤ n");
+    assert_eq!(gcd(k as u128, m as u128), 1, "gcd(k, m) must be 1");
+    move |x| if x < m { k * x % m } else { x }
+}
+
+fn gcd(a: u128, b: u128) -> u128 {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 #[cfg(test)]
@@ -254,5 +360,51 @@ mod tests {
                 mult_cut_width(k + 2880, 24, 120).value()
             );
         }
+    }
+
+    #[test]
+    fn perm_rank_reproduces_the_native_counting_theorem() {
+        // On ring-native multiplication the Gram-rank instrument must
+        // agree with Theorem 8.5's count, bond for bond.
+        let cases: Vec<(Vec<usize>, Vec<usize>)> = vec![
+            (vec![2, 3, 4], vec![5, 7, 11]),
+            (vec![2, 3, 4, 3], vec![5, 7, 29]),
+            (zigzag::diamond(2, 4), vec![7, 11, 49]),
+        ];
+        for (profile, ks) in cases {
+            let n: usize = profile.iter().product();
+            for k in ks {
+                let counted: Vec<usize> = mult_width_profile(&profile, k as u128)
+                    .into_iter()
+                    .map(|w| w.value() as usize)
+                    .collect();
+                let grammed = perm_width_profile(&profile, &foreign_mult(n, k, n));
+                assert_eq!(grammed, counted, "profile {:?} k {}", profile, k);
+            }
+        }
+    }
+
+    #[test]
+    fn perm_rank_matches_dense_choi_bonds_off_the_native_family() {
+        // Off the native family no counting theorem exists; the Gram rank
+        // must still equal the bond profile of the exactly-compressed
+        // dense-Choi MPO — the definition of operator Schmidt rank.
+        use crate::mpo::Mpo;
+        let profile = vec![2usize, 3, 4, 3]; // N = 72
+        let n: usize = profile.iter().product();
+        for (k, m) in [(7usize, 71usize), (7, 69), (5, 61), (7, 72)] {
+            let grammed = perm_width_profile(&profile, &foreign_mult(n, k, m));
+            let mpo = Mpo::from_permutation(&profile, foreign_mult(n, k, m), TruncSpec::exact());
+            assert_eq!(grammed, mpo.bond_dims(), "×{} mod {}", k, m);
+        }
+    }
+
+    #[test]
+    fn small_foreign_rings_are_screened_by_the_cut() {
+        // A modulus that fits inside the right block never crosses the
+        // cut: the operator is (perm inside the block) ⊕ identity, rank
+        // 1 + 1 regardless of k. Foreign cost comes from straddling.
+        let r = perm_cut_rank(24, 120, &foreign_mult(2880, 7, 97));
+        assert_eq!(r, 2);
     }
 }

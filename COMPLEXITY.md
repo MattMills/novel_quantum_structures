@@ -156,6 +156,19 @@ separation: **the cost of a modular-arithmetic operator is knowable in time
 independent of the cost of realizing it.** It is what lets the Shor kernel
 (`examples/shor_kernel.rs`) price all ten controlled powers a priori.
 
+Off the native arithmetic family the counting theorem is gone but
+prediction survives one rung down: `width::perm_cut_rank` computes the
+exact rank of **any** permutation of `Z_N` across a cut in `O(N)`
+arithmetic plus one small SVD — still no tensors — which is what prices
+foreign-modulus multiplication (`×k mod M`, `M ≠ N`) wholesale: native
+`×7` costs 7 at the diamond's waist, foreign `×7 mod M` costs
+`≈ (k+1)² − O(1) = 62` for *every* generic `M`, against a
+random-permutation baseline of 573 ≈ the squared cap
+(`examples/foreign_rings.rs`, THEORY §8.13). Leaving the native ring
+squares the width; only divisors (`w + 1`), screened moduli (`M` inside
+one block: rank 2), and the boundary band `N ∓ r` (the two-front width
+squared, `(a+b−1)²`) escape.
+
 ### Layout is the cost — cutwidth
 
 The *same physical state* can be Class A or Class C depending only on the
@@ -237,6 +250,8 @@ Every geometric object, its work to build, and its output — `n` sites,
 | `FrameFlow` `F^t` | `O(n·χ_F³)` per snapshot | `1`/`2`/`36` | — | B |
 | controlled `C-U^{2ʲ}` (Shor) | `O(n·(w+1)³·d²)` | `w+[k≢1]` | `O(n·χ²·d²)` | B |
 | looped / twisted boundary | `O(m·n·χ³·d²)` build | modest | `O(n·χ²·d²)` | B |
+| scaled loop `×k mod N−r` | `O(k·n·(rk)³·d²)` build | `≈` two-front width² | `O(n·χ²·d²)` | B |
+| foreign multiplier `×k mod M`, `M∤N` | predict: `O(N·min(L,S))`, no tensors | `(k+1)²` capped `min(L,S)²` | `O(n·χ²·d²)` | B→C at `k ≈ √cap` |
 | single X (block layout) | `O(n·(∏d)³)` | `∏d` | `O(n·(∏d)²)` | C* |
 | weave `r×c` (2 directions) | `O(c·d^{3r})` | `d^{min(r,c)}` | `O(c·d^{2r})` | C |
 | Haar scrambling | `O(g·χ³·d³)` → saturates | full rank | volume | C |
