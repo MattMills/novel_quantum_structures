@@ -28,7 +28,7 @@ use novel_quantum_structures::mps::Mps;
 use novel_quantum_structures::network::{bundle, weave};
 use novel_quantum_structures::stabilize::iterate;
 use novel_quantum_structures::width::mult_width_profile;
-use novel_quantum_structures::{radix, zigzag, C64, Rng, TruncSpec};
+use novel_quantum_structures::{radix, zigzag, Rng, TruncSpec, C64};
 use std::time::{Duration, Instant};
 
 const SPEC: TruncSpec = TruncSpec {
@@ -91,7 +91,10 @@ fn main() {
 
     // Bundle network: χ = hi for any number of strands K.
     println!("-- bundle of K crossing strands  (χ = hi, GHZ rungs) --");
-    println!("{:>6} {:>6} {:>6} {:>10} {:>12}", "K", "sites", "χ", "params", "build");
+    println!(
+        "{:>6} {:>6} {:>6} {:>10} {:>12}",
+        "K", "sites", "χ", "params", "build"
+    );
     let strand = zigzag::diamond(2, 5);
     for k in [2usize, 4, 8, 16] {
         let (net, groups) = bundle(&strand, k);
@@ -129,11 +132,7 @@ fn main() {
             zigzag::bowtie(&profile).run_mps(&mut m);
             (m, ())
         });
-        let ent = m
-            .bond_entropies_bits()
-            .iter()
-            .cloned()
-            .fold(0.0, f64::max);
+        let ent = m.bond_entropies_bits().iter().cloned().fold(0.0, f64::max);
         println!(
             "{:>14} {:>6} {:>8} {:>10.3} {:>12} {:>10.0?}",
             format!("diamond(2,{})", hi),
@@ -176,7 +175,11 @@ fn main() {
     for k in [7u128, 49, 2401, 1921] {
         print!(
             "{} ",
-            mult_width_profile(&dia, k).iter().map(|w| w.value()).max().unwrap()
+            mult_width_profile(&dia, k)
+                .iter()
+                .map(|w| w.value())
+                .max()
+                .unwrap()
         );
     }
     println!("\n→ χ is the cut-rank |{{⌊kb/S⌋ mod L}}|, non-monotone in k (×1921 < ×7).\n");
@@ -230,7 +233,10 @@ fn main() {
 
     // Haar scrambling: volume law, truncation blows up.
     println!("-- Haar-random brickwork on a wave  (volume law, χ saturates) --");
-    println!("{:>10} {:>8} {:>16}", "χ cap", "reached", "discarded weight");
+    println!(
+        "{:>10} {:>8} {:>16}",
+        "χ cap", "reached", "discarded weight"
+    );
     let sw = zigzag::wave(2, 4, 2);
     let mut rng = Rng::new(7);
     let scramble = zigzag::brickwork_random(&sw, 3, &mut rng);
@@ -252,7 +258,10 @@ fn main() {
     println!("========== predict-vs-pay: the width atlas ==========\n");
     println!("The width of ×k is a number-theoretic object — computable WITHOUT the tensor.");
     let wave = zigzag::wave(2, 5, 4); // N ≈ 8.6e12
-    println!("{:>10} {:>18} {:>18} {:>10}", "k", "predict (arithmetic)", "pay (build MPO)", "χ");
+    println!(
+        "{:>10} {:>18} {:>18} {:>10}",
+        "k", "predict (arithmetic)", "pay (build MPO)", "χ"
+    );
     for k in [7usize, 11] {
         let (pred, dt_pred) = time(|| {
             mult_width_profile(&wave, k as u128)
@@ -275,8 +284,14 @@ fn main() {
     // ======================================================================
     println!("========== layout-dependence: the SAME state, two costs ==========\n");
     let cs = zigzag::diamond(1, 4);
-    println!("{:>14} {:>8} {:>10} {:>12}", "layout", "χ", "params", "build");
-    for (name, layout) in [("block", Layout::Block), ("interleaved", Layout::Interleaved)] {
+    println!(
+        "{:>14} {:>8} {:>10} {:>12}",
+        "layout", "χ", "params", "build"
+    );
+    for (name, layout) in [
+        ("block", Layout::Block),
+        ("interleaved", Layout::Interleaved),
+    ] {
         let x = Crossing::twin(&cs, true).with_layout(layout);
         let ((m, _), dt) = time(|| {
             let mut m = Mps::zero_state(&x.dims(), SPEC);
@@ -337,7 +352,9 @@ fn main() {
     let bare = iterate(&pump, &basis(&bp, n_total - 1), 3000, 1e-12);
     println!(
         "  bare seam (Jordan block, polynomial 1/k²): {} steps to 1e-12",
-        bare.converged_at.map(|s| s.to_string()).unwrap_or_else(|| ">3000".into())
+        bare.converged_at
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| ">3000".into())
     );
     for gamma in [0.5f64, 0.2, 0.05] {
         let damper = Mpo::identity(&bp, SPEC).add(
@@ -349,7 +366,9 @@ fn main() {
         println!(
             "  damped seam γ={:<4} (eigenvalue, exponential γ^k): {} steps",
             gamma,
-            run.converged_at.map(|s| s.to_string()).unwrap_or_else(|| ">500".into())
+            run.converged_at
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| ">500".into())
         );
     }
     println!("→ the boundary sets the convergence CLASS: polynomial vs exponential.\n");
@@ -358,7 +377,10 @@ fn main() {
     // The dense wall — what χ buys
     // ======================================================================
     println!("========== the headline: what bounded χ buys ==========\n");
-    println!("{:>16} {:>8} {:>16} {:>14} {:>10}", "object", "sites", "dense dim", "MPS/MPO size", "ratio");
+    println!(
+        "{:>16} {:>8} {:>16} {:>14} {:>10}",
+        "object", "sites", "dense dim", "MPS/MPO size", "ratio"
+    );
     let w = zigzag::wave(2, 5, 4);
     let dense = zigzag::dense_dimension(&w);
     let adder = radix::adder_mpo_exact(&w, 1, SPEC);
@@ -374,5 +396,8 @@ fn main() {
         "\nThe 25-site wave's adder acts on a {:.1e}-dimensional operator space and is",
         dense * dense
     );
-    println!("stored in {:.1} KB — the entire point of a bounded-χ representation.", kb(adder.param_count()));
+    println!(
+        "stored in {:.1} KB — the entire point of a bounded-χ representation.",
+        kb(adder.param_count())
+    );
 }

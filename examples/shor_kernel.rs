@@ -198,8 +198,7 @@ fn main() {
         let out = cu[t].apply_to(&base);
         let (x, y) = control_xy(&out);
         let theta = y.atan2(x).rem_euclid(2.0 * PI);
-        let theta_pred =
-            2.0 * PI * ((s_eig as u128 * (1u128 << t)) % ord) as f64 / ord as f64;
+        let theta_pred = 2.0 * PI * ((s_eig as u128 * (1u128 << t)) % ord) as f64 / ord as f64;
         assert!(
             (theta - theta_pred).abs() < 1e-6,
             "t={}: {} vs {}",
@@ -221,9 +220,7 @@ fn main() {
     let mut one = Mps::basis_state(&profile, &digits_of(&profile, 1), SPEC);
     one.apply1(0, &gates::hadamard());
     let ent = cu[0].apply_to(&one);
-    println!(
-        "\ncontrast — register |1⟩ (a superposition of all 12 eigenstates):"
-    );
+    println!("\ncontrast — register |1⟩ (a superposition of all 12 eigenstates):");
     println!(
         "after C-U the control bond is {} — kickback is bond-free ONLY on",
         ent.bond_dims()[0]
@@ -270,7 +267,9 @@ fn main() {
             bits[t] = b as u8;
             last = b;
         }
-        let phi: f64 = (1..=m_bits).map(|t| bits[t] as f64 / 2f64.powi(t as i32)).sum();
+        let phi: f64 = (1..=m_bits)
+            .map(|t| bits[t] as f64 / 2f64.powi(t as i32))
+            .sum();
         // Convergents are already in lowest terms; the denominator divides
         // r. Any unit's order divides the Carmichael exponent
         // λ(1440) = lcm(λ(32), λ(9), λ(5)) = 24 — the classical bound that
@@ -296,7 +295,10 @@ fn main() {
             break;
         }
     }
-    println!("\nlcm of denominators = {}; smallest verified multiple with", r_lcm);
+    println!(
+        "\nlcm of denominators = {}; smallest verified multiple with",
+        r_lcm
+    );
     println!(
         "7^r ≡ 1 (mod 1440):  r = {}   (classical check: ord = {})",
         recovered, ord

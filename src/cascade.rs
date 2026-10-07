@@ -166,7 +166,10 @@ impl Transducer {
     /// `msg_dim = r·k + 1` for the full mod `N−r` semantics.
     pub fn mult_wide(profile: &[usize], k: usize, msg_dim: usize) -> Transducer {
         assert!(k >= 1, "k must be positive");
-        assert!(msg_dim >= k, "alphabet must contain the working carries [0, k)");
+        assert!(
+            msg_dim >= k,
+            "alphabet must contain the working carries [0, k)"
+        );
         assert!(
             msg_dim <= 4096,
             "widened alphabets are for modest r·k; compose cascades for more"
@@ -373,7 +376,11 @@ impl Transducer {
     /// branch-by-branch (`examples/boundary_twists.rs` does the latter
     /// for `×43` on the diamond).
     pub fn to_mpo_looped_twisted(&self, sigma: &[usize], trunc: TruncSpec) -> Mpo {
-        assert_eq!(sigma.len(), self.msg_dim, "twist must permute the message set");
+        assert_eq!(
+            sigma.len(),
+            self.msg_dim,
+            "twist must permute the message set"
+        );
         let mut seen = vec![false; self.msg_dim];
         for &v in sigma {
             assert!(v < self.msg_dim && !seen[v], "twist must be a permutation");
@@ -427,7 +434,10 @@ impl Transducer {
     /// transiently need bond dimension near the geometric cap — supply a
     /// rank cap that accommodates it.
     pub fn to_mpo_looped_scaled(&self, r: usize, trunc: TruncSpec) -> Mpo {
-        assert!(r >= 1, "the scale must be positive (r = 1 is the straight loop)");
+        assert!(
+            r >= 1,
+            "the scale must be positive (r = 1 is the straight loop)"
+        );
         let mut acc: Option<Mpo> = None;
         let mut e = 0usize;
         while e * r < self.msg_dim {
@@ -925,8 +935,7 @@ mod tests {
         let a1 = Transducer::adder(&profile, 1).to_mpo(SPEC);
         let seam_digits: Vec<usize> = profile.iter().map(|&d| d - 1).collect();
         let expected = a1.add(
-            &Mpo::basis_transfer(&profile, &[0, 0, 0], &seam_digits, SPEC)
-                .scale(C64::real(-1.0)),
+            &Mpo::basis_transfer(&profile, &[0, 0, 0], &seam_digits, SPEC).scale(C64::real(-1.0)),
             SPEC,
         );
         let f = m.hs_fidelity(&expected);
@@ -978,8 +987,8 @@ mod tests {
         let n = total_dim(&profile) as usize;
         for (k, r) in [(7usize, 2usize), (5, 3), (6, 7)] {
             let m_ring = n - r;
-            let looped = Transducer::mult_wide(&profile, k, r * k + 1)
-                .to_mpo_looped_scaled(r, SPEC);
+            let looped =
+                Transducer::mult_wide(&profile, k, r * k + 1).to_mpo_looped_scaled(r, SPEC);
             for x in 0..n {
                 let out = looped.apply_to(&basis(&profile, x as u128)).to_dense();
                 let mut expect = vec![0.0f64; n];
@@ -995,7 +1004,12 @@ mod tests {
                     assert!(
                         (out.amps[y].abs() - expect[y]).abs() < 1e-9,
                         "k={} r={} x={} y={}: {} vs {}",
-                        k, r, x, y, out.amps[y].abs(), expect[y]
+                        k,
+                        r,
+                        x,
+                        y,
+                        out.amps[y].abs(),
+                        expect[y]
                     );
                     if expect[y] > 0.0 {
                         assert_eq!(k * x % m_ring, y % m_ring, "congruence mod N−r");
@@ -1037,7 +1051,10 @@ mod tests {
                     assert!(
                         (out.amps[y].abs() - expect[y]).abs() < 1e-9,
                         "c={} r={} x={} y={}",
-                        c, r, x, y
+                        c,
+                        r,
+                        x,
+                        y
                     );
                     if expect[y] > 0.0 {
                         assert_eq!((x + c) % m_ring, y % m_ring, "congruence mod N−r");
@@ -1058,8 +1075,7 @@ mod tests {
         let n = total_dim(&profile) as usize;
         let (k, r) = (6usize, 7usize);
         let m_ring = n - r;
-        let looped =
-            Transducer::mult_wide(&profile, k, r * k + 1).to_mpo_looped_scaled(r, SPEC);
+        let looped = Transducer::mult_wide(&profile, k, r * k + 1).to_mpo_looped_scaled(r, SPEC);
         let mut image = vec![false; m_ring];
         for x in 0..m_ring {
             let out = looped.apply_to(&basis(&profile, x as u128)).to_dense();

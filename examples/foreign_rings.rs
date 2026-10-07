@@ -26,11 +26,17 @@
 //!      generalization of the mod `N∓1` boundary family to every small `r`.
 
 use novel_quantum_structures::cascade::Transducer;
-use novel_quantum_structures::width::{foreign_mult, mult_width_profile, perm_cut_rank, perm_width_profile};
+use novel_quantum_structures::width::{
+    foreign_mult, mult_width_profile, perm_cut_rank, perm_width_profile,
+};
 use novel_quantum_structures::{zigzag, Rng, TruncSpec};
 
 fn gcd(a: usize, b: usize) -> usize {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 fn main() {
@@ -57,21 +63,30 @@ fn main() {
         .map(|w| w.value() as usize)
         .collect();
     assert_eq!(native, atlas, "Gram instrument must reproduce Theorem 8.5");
-    println!("=== 1. ×7 in the native ring (atlas-pinned): {:?} ===\n", native);
+    println!(
+        "=== 1. ×7 in the native ring (atlas-pinned): {:?} ===\n",
+        native
+    );
 
     // ---- 2. The ladder: ×7 mod M, identity-extended -------------------------
     println!("=== 2. ×7 mod M across the diamond — exact cut ranks ===\n");
-    println!("{:>8} {:>7} {:>10}   {}", "M", "N−qM", "gcd(M,N)", "rank profile");
+    println!(
+        "{:>8} {:>7} {:>10}   {}",
+        "M", "N−qM", "gcd(M,N)", "rank profile"
+    );
     let ms: Vec<usize> = vec![
         2880, 2879, 2878, 2877, 2876, 2875, 2874, 2873, 2872, // the N−r ladder
-        1440, 720,  // divisors: controlled arithmetic
+        1440, 720, // divisors: controlled arithmetic
         1439, 1441, // pseudo-Mersenne relative to the divisor 1440
         2867, 2861, 1213, // generic primes/semiprimes
-        1000, 961,  // gcd-rich and atlas-resonant neighbourhoods
+        1000, 961, // gcd-rich and atlas-resonant neighbourhoods
     ];
     for m in ms {
         if gcd(7, m) != 1 {
-            println!("{:>8}      (gcd(7, {}) > 1 — not a permutation; see §5)", m, m);
+            println!(
+                "{:>8}      (gcd(7, {}) > 1 — not a permutation; see §5)",
+                m, m
+            );
             continue;
         }
         let prof = perm_width_profile(&profile, &foreign_mult(n, 7, m));
@@ -88,11 +103,17 @@ fn main() {
     // Divisors obey the controlled-width formula (THEORY Prop 8.11): the
     // top digit is the control, so the cost is the sub-ring width + 1.
     let d1440 = perm_width_profile(&profile, &foreign_mult(n, 7, 1440));
-    assert!(*d1440.iter().max().unwrap() <= 8, "divisor rung must stay ≈ w+1");
+    assert!(
+        *d1440.iter().max().unwrap() <= 8,
+        "divisor rung must stay ≈ w+1"
+    );
     // Small moduli are screened: M = 97 < 120 = S never crosses the waist.
     let screened = perm_cut_rank(24, 120, &foreign_mult(n, 7, 97));
     assert_eq!(screened, 2);
-    println!("\n  M = 97 < S = 120 at the waist: rank {} — a modulus inside one", screened);
+    println!(
+        "\n  M = 97 < S = 120 at the waist: rank {} — a modulus inside one",
+        screened
+    );
     println!("  block never crosses the cut; foreign cost is a straddling cost.");
 
     // Random permutations: the unstructured baseline.
@@ -111,14 +132,27 @@ fn main() {
     // ---- 3. The square law ---------------------------------------------------
     println!("\n=== 3. The square law: foreign rank ≈ (k+1)², capped ===\n");
     println!("waist cut (L,S) = (24,120), M = 2867 = 47·61 (generic):\n");
-    println!("{:>6} {:>8} {:>9} {:>8} {:>6}", "k", "native", "foreign", "(k+1)²", "cap");
+    println!(
+        "{:>6} {:>8} {:>9} {:>8} {:>6}",
+        "k", "native", "foreign", "(k+1)²", "cap"
+    );
     for k in [2usize, 3, 5, 7, 11, 13, 17, 23, 29] {
         let nat = novel_quantum_structures::width::mult_cut_width(k as u128, 24, 120).value();
         let f = perm_cut_rank(24, 120, &foreign_mult(n, k, 2867));
-        println!("{:>6} {:>8} {:>9} {:>8} {:>6}", k, nat, f, (k + 1) * (k + 1), 576);
+        println!(
+            "{:>6} {:>8} {:>9} {:>8} {:>6}",
+            k,
+            nat,
+            f,
+            (k + 1) * (k + 1),
+            576
+        );
     }
     println!("\natlas resonance does not transfer (waist rank):\n");
-    println!("{:>7} {:>8} {:>10} {:>10}", "k", "native", "mod 2867", "mod 2879");
+    println!(
+        "{:>7} {:>8} {:>10} {:>10}",
+        "k", "native", "mod 2867", "mod 2879"
+    );
     for k in [1921usize, 961, 1441, 49] {
         let nat = perm_cut_rank(24, 120, &foreign_mult(n, k, n));
         let f867 = perm_cut_rank(24, 120, &foreign_mult(n, k, 2867));
@@ -126,7 +160,10 @@ fn main() {
         println!("{:>7} {:>8} {:>10} {:>10}", k, nat, f867, f879);
     }
     let dead = perm_cut_rank(24, 120, &foreign_mult(n, 1921, 2867));
-    assert_eq!(dead, 576, "×1921 must saturate the cap at a generic modulus");
+    assert_eq!(
+        dead, 576,
+        "×1921 must saturate the cap at a generic modulus"
+    );
     println!("\n→ ×1921: native width 3, generic foreign width 576 = the FULL cap.");
     println!("  Resonance is a property of the native frame, not of the operator.");
 
@@ -143,7 +180,10 @@ fn main() {
 
     // In Z_2879, k ≡ a·b⁻¹ with small (a, b) — the minimal opposed-front
     // (meet-in-the-middle) machine of finding 27 — predicts the rank.
-    println!("{:>7} {:>8} {:>11} {:>9}", "k", "≡ a/b", "(a+b−1)²", "measured");
+    println!(
+        "{:>7} {:>8} {:>11} {:>9}",
+        "k", "≡ a/b", "(a+b−1)²", "measured"
+    );
     let m_minus = n - 1;
     for k in [7usize, 1921, 961, 1441, 1445, 722] {
         // minimal rational representation by brute force
@@ -175,7 +215,10 @@ fn main() {
     let enc = move |x: usize| (k_enc * (x + 1)) % m_plus - 1;
     let r_enc = perm_cut_rank(24, 120, &enc);
     assert_eq!(r_enc, 36);
-    println!("\n  mod N+1 (diminished-one): ×1922 ≡ 4/3 (mod 2881) → rank {} = (4+3−1)² ✓", r_enc);
+    println!(
+        "\n  mod N+1 (diminished-one): ×1922 ≡ 4/3 (mod 2881) → rank {} = (4+3−1)² ✓",
+        r_enc
+    );
     println!("  → the reduction penalty SQUARES the minimal machine, and the");
     println!("    minimal machine is the rational reconstruction of k in Z_M.");
 
@@ -183,7 +226,10 @@ fn main() {
     println!("\n=== 5. Scaled loops: ×k mod (N−r) from the boundary alone ===\n");
     println!("Σ_e ⟨e| machine |r·e⟩ on the alphabet r·k+1 — mixed-radix");
     println!("pseudo-Mersenne (Crandall) reduction as a boundary condition:\n");
-    println!("{:>4} {:>6} {:>28} {:>10} {:>8}", "r", "M", "traced bond dims", "id-ext max", "seam");
+    println!(
+        "{:>4} {:>6} {:>28} {:>10} {:>8}",
+        "r", "M", "traced bond dims", "id-ext max", "seam"
+    );
     for r in 1..=4usize {
         let m_ring = n - r;
         if gcd(7, m_ring) != 1 {
@@ -234,7 +280,12 @@ fn main() {
     }
     println!("\nhealing: ×6 (gcd(6, 2880) = 6, open defect 0.833) scaled-looped at");
     println!("r = 7 computes ×6 mod 2873 = 13²·17 (gcd = 1) — a bijection again,");
-    println!("bond dims {:?}, {} seam-doubled inputs of {}.", healed.bond_dims(), doubled, n);
+    println!(
+        "bond dims {:?}, {} seam-doubled inputs of {}.",
+        healed.bond_dims(),
+        doubled,
+        n
+    );
 
     // ---- 6. The additive family ----------------------------------------------
     println!("\n=== 6. Foreign addition squares too (native adder width 2) ===\n");

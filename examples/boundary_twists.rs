@@ -70,7 +70,8 @@ fn main() {
     );
     for x in [10u128, 65, 70, 71] {
         let f_of = |m: &novel_quantum_structures::mpo::Mpo, target: u128| {
-            m.apply_to(&basis(&profile, x)).fidelity(&basis(&profile, target))
+            m.apply_to(&basis(&profile, x))
+                .fidelity(&basis(&profile, target))
         };
         let t_open = (x + c) % n;
         let t_loop = (x + c) % (n - 1);
@@ -109,9 +110,18 @@ fn main() {
     let m_open = Transducer::mult(&profile, k).to_mpo(SPEC);
     let m_loop = Transducer::mult(&profile, k).to_mpo_looped(SPEC);
     let m_twist = Transducer::mult(&profile, k).to_mpo_looped_twisted(&reversal(k), SPEC);
-    println!("×6:  open  (Z_72, gcd 6):  unitarity defect {:.4}", unitarity_defect(&m_open, SPEC));
-    println!("     loop  (Z_71, prime):  unitarity defect {:.1e}", unitarity_defect(&m_loop, SPEC));
-    println!("     twist (Z_73, prime):  unitarity defect {:.1e}", unitarity_defect(&m_twist, SPEC));
+    println!(
+        "×6:  open  (Z_72, gcd 6):  unitarity defect {:.4}",
+        unitarity_defect(&m_open, SPEC)
+    );
+    println!(
+        "     loop  (Z_71, prime):  unitarity defect {:.1e}",
+        unitarity_defect(&m_loop, SPEC)
+    );
+    println!(
+        "     twist (Z_73, prime):  unitarity defect {:.1e}",
+        unitarity_defect(&m_twist, SPEC)
+    );
     for x in [0u128, 35, 71] {
         let v_out = (k as u128 * (x + 1)) % (n + 1);
         let f = m_twist
@@ -129,8 +139,14 @@ fn main() {
     let m5_open = Transducer::mult(&p3, 5).to_mpo(SPEC);
     let m5_twist = Transducer::mult(&p3, 5).to_mpo_looped_twisted(&reversal(5), SPEC);
     println!("×5 on {:?} (N = 24, twist ring 25 = 5²):", p3);
-    println!("  open:  defect {:.1e}   (gcd(5, 24) = 1 — unitary)", unitarity_defect(&m5_open, SPEC));
-    println!("  twist: defect {:.3}   (gcd(5, 25) = 5 — holes at v ≡ 0 mod 5)", unitarity_defect(&m5_twist, SPEC));
+    println!(
+        "  open:  defect {:.1e}   (gcd(5, 24) = 1 — unitary)",
+        unitarity_defect(&m5_open, SPEC)
+    );
+    println!(
+        "  twist: defect {:.3}   (gcd(5, 25) = 5 — holes at v ≡ 0 mod 5)",
+        unitarity_defect(&m5_twist, SPEC)
+    );
     for x in [4u128, 9, 14, 19] {
         println!(
             "    |{}⟩ (v = {:>2}): ‖M|x⟩‖ = {:.1e}",
@@ -157,8 +173,7 @@ fn main() {
     for x in [0u128, 67, 66] {
         let mut survivor: Option<(usize, u128)> = None;
         for (m, &sm) in sigma43.iter().enumerate() {
-            let branch =
-                t43.to_mpo_with(Boundary::Fixed(m), Boundary::Fixed(sm), SPEC);
+            let branch = t43.to_mpo_with(Boundary::Fixed(m), Boundary::Fixed(sm), SPEC);
             let res = branch.apply_to(&basis(&diamond, x));
             if res.norm() > 0.5 {
                 let dense = res.to_dense();

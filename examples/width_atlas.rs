@@ -217,7 +217,10 @@ fn main() {
     println!("  predicted {:?}", predicted);
     println!("  measured  {:?}", measured);
     assert_eq!(predicted, measured);
-    println!("  bond-for-bond agreement across all {} cuts.", measured.len());
+    println!(
+        "  bond-for-bond agreement across all {} cuts.",
+        measured.len()
+    );
 
     println!("\nThe cost curve of modular exponentiation on a chain is a number-");
     println!("theoretic object, computable in advance: the operator only executes it.");

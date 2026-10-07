@@ -323,8 +323,7 @@ mod tests {
                         w.value()
                     })
                     .collect();
-                let measured: Vec<u128> =
-                    m.bond_dims().iter().map(|&b| b as u128).collect();
+                let measured: Vec<u128> = m.bond_dims().iter().map(|&b| b as u128).collect();
                 assert_eq!(measured, predicted, "profile {:?} k {}", profile, k);
             }
         }

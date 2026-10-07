@@ -120,7 +120,10 @@ fn main() {
     let ff = flow.powers[1]
         .compose_after(&flow.powers[1], SPEC)
         .hs_fidelity(&flow.powers[2]);
-    println!("F ∘ F = Π         :  hs fidelity {:.9}   (the reflection, χ = 2)", ff);
+    println!(
+        "F ∘ F = Π         :  hs fidelity {:.9}   (the reflection, χ = 2)",
+        ff
+    );
     let out = flow.at(0.7).apply_to(&start);
     println!(
         "unitarity of a fractional snapshot: ‖F^0.7|x₀⟩‖ = {:.9}",

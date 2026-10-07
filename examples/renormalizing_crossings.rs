@@ -64,7 +64,12 @@ fn main() {
         "{:>10} {:>10} {:>12} {:>14} {:>18}",
         "level", "scale", "#crossings", "modes each", "A|B entropy (bits)"
     );
-    for (level, scale) in [(5usize, "waist (coarse)"), (4, "shoulder"), (3, "mid"), (2, "valley (fine)")] {
+    for (level, scale) in [
+        (5usize, "waist (coarse)"),
+        (4, "shoulder"),
+        (3, "mid"),
+        (2, "valley (fine)"),
+    ] {
         println!(
             "{:>10} {:>10} {:>12} {:>14} {:>18.3}",
             level,
@@ -83,7 +88,11 @@ fn main() {
     println!("=== 3. A woven lattice of multi-V waves — the RG silhouette in the cost ===\n");
     // Dense-checkable: a small multi-V wave, 2–3 rows.
     let small = zigzag::wave(1, 3, 2); // [1,2,3,2,1,2,3,2,1], waists at 2 and 6
-    println!("weave `rows` copies of {:?} (waists at {:?}):\n", small, zigzag::waist_positions(&small));
+    println!(
+        "weave `rows` copies of {:?} (waists at {:?}):\n",
+        small,
+        zigzag::waist_positions(&small)
+    );
     for rows in [2usize, 3] {
         let (net, edges) = wave_weave(&small, rows);
         let mut m = Mps::zero_state(&net.dims(), SPEC);
@@ -96,7 +105,11 @@ fn main() {
             m.to_dense().fidelity(&d)
         };
         println!("rows={}: bond profile {:?}", rows, m.bond_dims());
-        println!("         (max χ {}, dense fidelity {:.9})", m.max_bond_dim(), fid);
+        println!(
+            "         (max χ {}, dense fidelity {:.9})",
+            m.max_bond_dim(),
+            fid
+        );
     }
     println!("\nThe cost profile is the WAVE, doubled: two humps at the two coarse waists,");
     println!("pinched to 1 at the fine valleys — and every hump thickens with each added");
@@ -130,15 +143,17 @@ fn main() {
     xb.bell(&[2, 3, 4]).run_mps(&mut crossed);
     println!(
         "crossed twin {:?} (ladder at levels 2,3,4): dims {:?}",
-        strand,
-        crossed.dims
+        strand, crossed.dims
     );
 
     // RG step: merge strand A's cell toward its waist (sites 1..5 → coarse).
     let mut coarse = crossed.clone();
     coarse.merge_sites(2); // fuse (2,3): d 3·4 = 12
     coarse.merge_sites(2); // fuse (12-site, 3): d 12·3 = 36 — the coarse waist block
-    println!("after coarse-graining A's waist cell (two merges): dims {:?}", coarse.dims);
+    println!(
+        "after coarse-graining A's waist cell (two merges): dims {:?}",
+        coarse.dims
+    );
 
     // The coarse-grained crossed state equals crossing-then-merging: preserved.
     let mut ref_state = crossed.clone();

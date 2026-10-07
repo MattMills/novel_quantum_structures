@@ -547,8 +547,7 @@ mod tests {
                     d
                 };
                 let input = Mps::basis_state(&dims, &digits_of(a * 15 + x), spec);
-                let target =
-                    Mps::basis_state(&dims, &digits_of(a * 15 + (1 << a) * x % 15), spec);
+                let target = Mps::basis_state(&dims, &digits_of(a * 15 + (1 << a) * x % 15), spec);
                 let f = cm.apply_to(&input).fidelity(&target);
                 assert!((f - 1.0).abs() < 1e-9, "a={} x={}: {}", a, x, f);
             }

@@ -114,7 +114,10 @@ fn main() {
     let p = zigzag::diamond(2, 5);
     let qft = radix::mixed_radix_qft(&p, 0.0).len();
     let ramp = radix::fourier_phase_ramp(&p, 1).len();
-    println!("{:>10} {:>14} {:>14} {:>10}", "K adds", "naive gates", "batched", "speedup");
+    println!(
+        "{:>10} {:>14} {:>14} {:>10}",
+        "K adds", "naive gates", "batched", "speedup"
+    );
     for k in [4usize, 8, 16, 32] {
         let naive = k * (2 * qft + ramp);
         let batched = 2 * qft + k * ramp;
@@ -127,7 +130,10 @@ fn main() {
         );
     }
     println!("\nAsymptotically K additions cost 1 frame + K cheap phase layers, not K");
-    println!("frames — the QFT round-trips amortize (→ ~{:.0}× as K grows). This IS a real", (2 * qft + ramp) as f64 / ramp as f64);
+    println!(
+        "frames — the QFT round-trips amortize (→ ~{:.0}× as K grows). This IS a real",
+        (2 * qft + ramp) as f64 / ramp as f64
+    );
     println!("gate-count gain, and it IS Draper's — the novelty here is only that it runs");
     println!("on the heterogeneous dimension wave and composes with the crossing.\n");
 
@@ -144,11 +150,29 @@ fn main() {
         .iter()
         .cloned()
         .fold(0.0, f64::max);
-    println!("×{} realized as ×{} ⋈ ÷{} (a crossing of two narrow fronts):", m, a, bb);
-    println!("  operator width χ = {}   (operator entanglement {:.2} bits)", chi, opee);
-    println!("  → SIMULATE: O(n·χ³) = O(n·{}) work per gate, {} params stored", chi.pow(3), crossed.param_count());
-    println!("  → IMPLEMENT: any circuit needs ≥ {:.0} entangling gates across the waist cut", opee.ceil());
-    println!("  → the single-front ×{} would sustain log₂({}) ≈ {:.1} bits — 3× more.", m, m, (m as f64).log2());
+    println!(
+        "×{} realized as ×{} ⋈ ÷{} (a crossing of two narrow fronts):",
+        m, a, bb
+    );
+    println!(
+        "  operator width χ = {}   (operator entanglement {:.2} bits)",
+        chi, opee
+    );
+    println!(
+        "  → SIMULATE: O(n·χ³) = O(n·{}) work per gate, {} params stored",
+        chi.pow(3),
+        crossed.param_count()
+    );
+    println!(
+        "  → IMPLEMENT: any circuit needs ≥ {:.0} entangling gates across the waist cut",
+        opee.ceil()
+    );
+    println!(
+        "  → the single-front ×{} would sustain log₂({}) ≈ {:.1} bits — 3× more.",
+        m,
+        m,
+        (m as f64).log2()
+    );
 
     println!("\n=== The honest bottom line ===\n");
     println!("Representation efficiency IS the quantum-advantage boundary: a computation");
