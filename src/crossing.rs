@@ -151,7 +151,11 @@ impl Crossing {
             // B[j] is the partner of A[i] with partner(i) = j; that pair
             // sits at MPS positions (2i, 2i+1).
             Layout::Interleaved => {
-                let i = if self.antiparallel { self.n() - 1 - j } else { j };
+                let i = if self.antiparallel {
+                    self.n() - 1 - j
+                } else {
+                    j
+                };
                 2 * i + 1
             }
         }

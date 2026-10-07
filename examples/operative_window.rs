@@ -28,11 +28,11 @@
 //!
 //! Run with: `cargo run --release --example operative_window`
 
+use novel_quantum_structures::cascade::Transducer;
 use novel_quantum_structures::circuit::Op;
 use novel_quantum_structures::dense::DenseState;
 use novel_quantum_structures::mpo::Mpo;
 use novel_quantum_structures::mps::Mps;
-use novel_quantum_structures::cascade::Transducer;
 use novel_quantum_structures::{gates, radix, zigzag, Rng, TruncSpec};
 use std::time::Instant;
 
@@ -51,40 +51,63 @@ fn opee_max(m: &Mpo) -> f64 {
 /// Fold `layers` of Haar-random brickwork into one operator, in place.
 fn fold_random_layer(op: &mut Mpo, profile: &[usize], rng: &mut Rng) {
     for i in (0..profile.len() - 1).step_by(2) {
-        op.absorb_after(&Op::Two(i, i + 1, gates::random(profile[i] * profile[i + 1], rng)));
+        op.absorb_after(&Op::Two(
+            i,
+            i + 1,
+            gates::random(profile[i] * profile[i + 1], rng),
+        ));
     }
     for i in (1..profile.len() - 1).step_by(2) {
-        op.absorb_after(&Op::Two(i, i + 1, gates::random(profile[i] * profile[i + 1], rng)));
+        op.absorb_after(&Op::Two(
+            i,
+            i + 1,
+            gates::random(profile[i] * profile[i + 1], rng),
+        ));
     }
 }
 
 fn main() {
     let p = zigzag::diamond(2, 4); // N = 144
-    println!("diamond {:?} — the operative window folded into one operator\n", p);
+    println!(
+        "diamond {:?} — the operative window folded into one operator\n",
+        p
+    );
 
     // ---- 1. The two regimes -----------------------------------------------
     println!("=== 1. Two regimes: arithmetic vs generic, folded into one operator ===\n");
     let v = Mpo::from_circuit(&radix::mixed_radix_qft_reversed(&p, 0.0), SPEC);
     let adder = |c: usize| {
         v.adjoint().compose_after(
-            &Mpo::from_circuit(&radix::fourier_phase_ramp_reversed(&p, c), SPEC).compose_after(&v, SPEC),
+            &Mpo::from_circuit(&radix::fourier_phase_ramp_reversed(&p, c), SPEC)
+                .compose_after(&v, SPEC),
             SPEC,
         )
     };
 
     println!("ARITHMETIC window — compose K adders (a K-deep additive computation):");
-    println!("{:>6} {:>10} {:>18}", "K adds", "folded χ", "op-entangle (bits)");
+    println!(
+        "{:>6} {:>10} {:>18}",
+        "K adds", "folded χ", "op-entangle (bits)"
+    );
     let mut acc = Mpo::identity(&p, SPEC);
     for k in 1..=16 {
         acc = adder(7).compose_after(&acc, SPEC);
         if [1usize, 2, 4, 8, 16].contains(&k) {
-            println!("{:>6} {:>10} {:>18.2}", k, acc.max_bond_dim(), opee_max(&acc));
+            println!(
+                "{:>6} {:>10} {:>18.2}",
+                k,
+                acc.max_bond_dim(),
+                opee_max(&acc)
+            );
         }
     }
     println!("→ χ flat at 2 however deep: an arbitrary-length arithmetic window is FREE.\n");
 
     println!("MULTIPLICATIVE window — compose K ×7 (deep modular exponentiation ×7^K):");
-    println!("{:>6} {:>10} {:>18}", "K mults", "folded χ", "op-entangle (bits)");
+    println!(
+        "{:>6} {:>10} {:>18}",
+        "K mults", "folded χ", "op-entangle (bits)"
+    );
     let m7 = Transducer::mult(&p, 7).to_mpo(SPEC);
     let mut mk = Mpo::identity(&p, SPEC);
     for k in 1..=8 {
@@ -96,7 +119,10 @@ fn main() {
     println!("→ bounded by geometry (the resonant width), never the depth.\n");
 
     println!("GENERIC quantum window — fold D layers of Haar-random brickwork:");
-    println!("{:>6} {:>10} {:>18}", "depth D", "folded χ", "op-entangle (bits)");
+    println!(
+        "{:>6} {:>10} {:>18}",
+        "depth D", "folded χ", "op-entangle (bits)"
+    );
     let mut rng = Rng::new(3);
     let mut op = Mpo::identity(&p, SPEC);
     for d in 1..=8 {
@@ -110,7 +136,10 @@ fn main() {
     // ---- 2. Window capacity ------------------------------------------------
     println!("=== 2. Window capacity — depth before saturation, by geometry ===\n");
     println!("How many generic layers fit before operator entanglement fills the budget:\n");
-    println!("{:>14} {:>12} {:>16} {:>14}", "profile", "χ cap", "opEE cap (bits)", "capacity (D)");
+    println!(
+        "{:>14} {:>12} {:>16} {:>14}",
+        "profile", "χ cap", "opEE cap (bits)", "capacity (D)"
+    );
     for hi in [3usize, 4] {
         let prof = zigzag::diamond(2, hi);
         let mut rng = Rng::new(11);

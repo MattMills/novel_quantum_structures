@@ -23,11 +23,11 @@
 //!
 //! Run with: `cargo run --release --example crossing_networks`
 
+use novel_quantum_structures::circuit::Circuit;
 use novel_quantum_structures::crossing::{Crossing, Layout};
 use novel_quantum_structures::dense::DenseState;
 use novel_quantum_structures::mps::Mps;
 use novel_quantum_structures::network::{bundle, overlay, wave_weave, weave, Network};
-use novel_quantum_structures::circuit::Circuit;
 use novel_quantum_structures::{zigzag, TruncSpec};
 
 const SPEC: TruncSpec = TruncSpec {
@@ -79,7 +79,10 @@ fn main() {
     println!("=== 2. Overlay — one pair crossed BOTH ways (cutwidth 2) ===\n");
     println!("An X (A[i]~B[n−1−i]) AND a ladder (A[i]~B[i]) at once: a union of two");
     println!("matchings = disjoint 4-cycles. Ordering each cycle contiguously:\n");
-    println!("{:>10} {:>10} {:>16} {:>16}", "strand", "max χ", "(hi−1)²", "dense fidelity");
+    println!(
+        "{:>10} {:>10} {:>16} {:>16}",
+        "strand", "max χ", "(hi−1)²", "dense fidelity"
+    );
     for hi in [3usize, 4, 5] {
         let p = zigzag::diamond(1, hi);
         let (net, edges) = overlay(&p);
@@ -101,7 +104,10 @@ fn main() {
     println!("=== 3. Weave — strands in TWO directions, a 2D lattice (area law) ===\n");
     println!("rows × cols qudits (d=2), coupled on every horizontal AND vertical edge");
     println!("(a 2D cluster state). Column-major: the cut crosses `rows` bonds.\n");
-    println!("{:>7} {:>7} {:>10} {:>14} {:>14}", "rows", "cols", "max χ", "d^rows", "dense fid");
+    println!(
+        "{:>7} {:>7} {:>10} {:>14} {:>14}",
+        "rows", "cols", "max χ", "d^rows", "dense fid"
+    );
     for &(rows, cols) in &[(2usize, 6usize), (3, 6), (4, 6), (5, 6), (3, 3), (3, 9)] {
         let (net, edges) = weave(2, rows, cols);
         let c = net.cluster(&edges);
@@ -178,7 +184,10 @@ fn main() {
     println!("{:>22} {:>10} {:>18}", "bundle (K strands)", 1, "hi");
     println!("{:>22} {:>10} {:>18}", "multi-period crossing", 1, "hi");
     println!("{:>22} {:>10} {:>18}", "overlay (X + ladder)", 2, "(hi−1)²");
-    println!("{:>22} {:>10} {:>18}", "weave (2D lattice)", "min(r,c)", "d^min(r,c)");
+    println!(
+        "{:>22} {:>10} {:>18}",
+        "weave (2D lattice)", "min(r,c)", "d^min(r,c)"
+    );
     println!("\nOne direction of crossing — however many strands, however many crossing");
     println!("points — is a constant cutwidth and stays classically cheap. A SECOND");
     println!("transverse direction is an area law. That threshold, not the number of");

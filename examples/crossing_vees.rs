@@ -106,7 +106,8 @@ fn main() {
             measured,
             predicted,
             m.max_bond_dim(),
-            fid.map(|f| format!("{:.9}", f)).unwrap_or_else(|| "—".into())
+            fid.map(|f| format!("{:.9}", f))
+                .unwrap_or_else(|| "—".into())
         );
         println!("        {}", bar);
     }
@@ -147,7 +148,10 @@ fn main() {
         "{:>13} {:>10} {:>10} {:>12} {:>12}",
         "layout", "max χ", "params", "time", "A|B bits"
     );
-    for (name, layout) in [("block", Layout::Block), ("interleaved", Layout::Interleaved)] {
+    for (name, layout) in [
+        ("block", Layout::Block),
+        ("interleaved", Layout::Interleaved),
+    ] {
         let xc = Crossing::twin(&small_strand, true).with_layout(layout);
         let t = Instant::now();
         let mut m = Mps::zero_state(&xc.dims(), SPEC);
@@ -207,9 +211,7 @@ fn main() {
     for (ga, gb, d) in xs.pairs_at(&[2, 3, 4]) {
         scrambled.apply2(ga, gb, &gates::random(d * d, &mut rng));
     }
-    println!(
-        "\ncontrast (peak-4 twin): Haar-random cross-coupling saturates any budget —"
-    );
+    println!("\ncontrast (peak-4 twin): Haar-random cross-coupling saturates any budget —");
     println!(
         "max χ = {} (capped 64), truncation {:.2e}: structure, not the geometry, is",
         scrambled.max_bond_dim(),
@@ -225,7 +227,10 @@ fn main() {
         "strand:  {}   (a valley — wide ends, narrow pinch)",
         fmt_row(&vee)
     );
-    println!("{:>7} {:>7} {:>14} {:>8}", "level", "#pairs", "entropy", "rank");
+    println!(
+        "{:>7} {:>7} {:>14} {:>8}",
+        "level", "#pairs", "entropy", "rank"
+    );
     for level in [5usize, 4, 3, 2, 1] {
         println!(
             "{:>7} {:>7} {:>14.4} {:>8}",

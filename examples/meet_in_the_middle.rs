@@ -75,9 +75,12 @@ fn main() {
         let fwd = Transducer::mult(&profile, a as usize).to_mpo(SPEC);
         let bwd = Transducer::div_mpo(&profile, b as usize, SPEC);
         let crossed = bwd.compose_after(&fwd, SPEC);
-        let ok = [1u128, 1000, n - 1]
-            .iter()
-            .all(|&x| crossed.apply_to(&basis(&profile, x)).fidelity(&basis(&profile, m * x % n)) > 1.0 - 1e-8);
+        let ok = [1u128, 1000, n - 1].iter().all(|&x| {
+            crossed
+                .apply_to(&basis(&profile, x))
+                .fidelity(&basis(&profile, m * x % n))
+                > 1.0 - 1e-8
+        });
         println!(
             "{:>8} {:>11} states {:>14} width {:<3} {:>10}",
             m,
@@ -100,10 +103,16 @@ fn main() {
     let k_inv = modinv(k as u128, 72) as usize; // 29
     let fwd = Transducer::mult(&small, k).to_mpo(SPEC);
     let conj = v.compose_after(&fwd.compose_after(&v.adjoint(), SPEC), SPEC);
-    let bwd_rev =
-        Transducer::mult_directed(&small, k_inv, novel_quantum_structures::cascade::Direction::LeftToRight)
-            .to_mpo(SPEC);
-    println!("on Z_72:  V (×{}) V†  vs  ×{} sweeping the opposite way:", k, k_inv);
+    let bwd_rev = Transducer::mult_directed(
+        &small,
+        k_inv,
+        novel_quantum_structures::cascade::Direction::LeftToRight,
+    )
+    .to_mpo(SPEC);
+    println!(
+        "on Z_72:  V (×{}) V†  vs  ×{} sweeping the opposite way:",
+        k, k_inv
+    );
     println!("  hs fidelity {:.9}", conj.hs_fidelity(&bwd_rev));
     println!("\nThe tail-radix frame V conjugates a FORWARD ×k into a BACKWARD ×k⁻¹ —");
     println!("prediction and retrodiction are the same operator seen from the two sides");
@@ -120,12 +129,18 @@ fn main() {
         v_std.max_bond_dim()
     );
     println!("The digit reversal is the costly component; the tail-radix ordering makes");
-    println!("it CANCEL between V and V† — paid at χ={} instead of χ={}.\n", v_rev.max_bond_dim(), v_std.max_bond_dim());
+    println!(
+        "it CANCEL between V and V† — paid at χ={} instead of χ={}.\n",
+        v_rev.max_bond_dim(),
+        v_std.max_bond_dim()
+    );
 
     // A mesh of additive solve-components: in the frame they commute (diagonal).
     let adder = |c: usize| {
         let d = Mpo::from_circuit(&radix::fourier_phase_ramp_reversed(&p4, c), SPEC);
-        v_rev.adjoint().compose_after(&d.compose_after(&v_rev, SPEC), SPEC)
+        v_rev
+            .adjoint()
+            .compose_after(&d.compose_after(&v_rev, SPEC), SPEC)
     };
     let cs = [11usize, 29, 47, 100, 133];
     // Naive: cross each component through the frame separately (K round-trips).
@@ -159,17 +174,24 @@ fn main() {
         ideal.max_bond_dim(),
         dt_ideal
     );
-    println!("  agree: {}", (naive.hs_fidelity(&ideal) - 1.0).abs() < 1e-7);
+    println!(
+        "  agree: {}",
+        (naive.hs_fidelity(&ideal) - 1.0).abs() < 1e-7
+    );
     println!("\nIn the frame the additive solve-components are diagonal and COMMUTE, so");
     println!("their ideal ordering is trivial — enter the frame once, sum, leave once —");
-    println!("collapsing {} crossings into one, at a fraction of the work.\n", cs.len());
+    println!(
+        "collapsing {} crossings into one, at a fraction of the work.\n",
+        cs.len()
+    );
 
     // ---- 4. A full affine mesh, solved -------------------------------------
     println!("=== 4. A full affine mesh solved by the crossing + tail-radix order ===\n");
     // x → k·x + c: forward ×a, backward ÷b for the multiplier, +c in the frame.
     let (a, b, c) = (7usize, 11usize, 500usize);
     let m = (a as u128 * modinv(b as u128, n)) % n; // the multiplier
-    let mult = Transducer::div_mpo(&profile, b, SPEC).compose_after(&Transducer::mult(&profile, a).to_mpo(SPEC), SPEC);
+    let mult = Transducer::div_mpo(&profile, b, SPEC)
+        .compose_after(&Transducer::mult(&profile, a).to_mpo(SPEC), SPEC);
     let add = radix::adder_mpo_exact(&profile, c as u128, SPEC);
     let affine = add.compose_after(&mult, SPEC); // x → m·x + c
     println!(
@@ -188,7 +210,10 @@ fn main() {
             > 1.0 - 1e-8
     });
     println!("  verified x → {}x+{} on basis states: {}", m, c, ok);
-    println!("\nThe single-front multiplier ×{} is unbuildable; the composite is solved", m);
+    println!(
+        "\nThe single-front multiplier ×{} is unbuildable; the composite is solved",
+        m
+    );
     println!("as a narrow mesh — forward prediction × backward retrodiction for the");
     println!("multiplicative part, an additive component in the tail-radix frame, the");
     println!("whole thing ordered by the ring's own Fourier structure and read at the");

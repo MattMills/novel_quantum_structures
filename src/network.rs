@@ -79,7 +79,10 @@ impl Network {
 
     /// Combined chain dimensions, in MPS order.
     pub fn dims(&self) -> Vec<usize> {
-        self.order.iter().map(|&(s, i)| self.strands[s][i]).collect()
+        self.order
+            .iter()
+            .map(|&(s, i)| self.strands[s][i])
+            .collect()
     }
 
     /// Total sites (the shared MPS length).
@@ -140,7 +143,11 @@ impl Network {
         }
         for &(a, b) in edges {
             let (da, db) = (self.dim(a), self.dim(b));
-            c.two(self.global(a.0, a.1), self.global(b.0, b.1), gates::cphase(da, db));
+            c.two(
+                self.global(a.0, a.1),
+                self.global(b.0, b.1),
+                gates::cphase(da, db),
+            );
         }
         c
     }
@@ -359,7 +366,11 @@ mod tests {
             "overlay χ {} > hi²",
             m.max_bond_dim()
         );
-        assert!(m.max_bond_dim() > 4, "overlay χ {} should exceed hi", m.max_bond_dim());
+        assert!(
+            m.max_bond_dim() > 4,
+            "overlay χ {} should exceed hi",
+            m.max_bond_dim()
+        );
         assert!((dense_fidelity(&net, &net.cluster(&edges)) - 1.0).abs() < 1e-10);
     }
 
